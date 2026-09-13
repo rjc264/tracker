@@ -42,7 +42,7 @@
 
     <table>
       <thead>
-        <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tarjeta</th></tr>
+        <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tipo</th><th>Tarjeta</th></tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
@@ -89,11 +89,18 @@
         : 'N/A';
 
       const rows = document.getElementById('rows');
+      const typeLabels = {
+        tarjeta_credito: 'Tarjeta de crédito',
+        tarjeta_debito: 'Tarjeta de débito',
+        transferencia: 'Transferencia',
+        desconocido: 'Desconocido',
+      };
       rows.innerHTML = expenses.map(e => `
         <tr>
           <td>${new Date(e.date).toLocaleDateString()}</td>
           <td>${e.merchant ?? ''}</td>
           <td>$${e.amount.toFixed(2)}</td>
+          <td>${typeLabels[e.type] ?? e.type ?? ''}</td>
           <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
         </tr>
       `).join('');

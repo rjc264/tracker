@@ -62,7 +62,7 @@ En `Settings → Secrets and variables → Actions`:
   con `openssl rand -base64 24`). Úsala también al abrir el dashboard.
 
 **Variables** (opcionales, tienen defaults en el código):
-- `BANK_EMAIL` (default `notificaciones@bac.com.sv`)
+- `BANK_EMAIL` (default `notificaciones_bac@baccredomatic.sv,info@baccredomatic.com`, admite varios separados por coma)
 - `BANK` (default `BAC`)
 - `SYNC_DAYS` (default `30`)
 

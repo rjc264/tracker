@@ -26,7 +26,7 @@ CREDENTIALS_FILE = CONFIG_DIR / os.environ.get("CREDENTIALS_FILE_NAME", "credent
 TOKEN_FILE = CONFIG_DIR / os.environ.get("TOKEN_FILE_NAME", "token.json")
 EXPENSES_FILE = DATA_DIR / "expenses.enc.json"
 
-BANK_EMAIL = os.environ.get("BANK_EMAIL") or "notificaciones@bac.com.sv"
+BANK_EMAIL = os.environ.get("BANK_EMAIL") or "notificaciones_bac@baccredomatic.sv,info@baccredomatic.com"
 BANK_NAME = os.environ.get("BANK") or "BAC"
 SYNC_DAYS = int(os.environ.get("SYNC_DAYS") or "30")
 DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
@@ -35,6 +35,24 @@ DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
 AMOUNT_RE = re.compile(r"(?:Monto|Amount)[:\s]*[A-Z]{0,3}\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
 MERCHANT_RE = re.compile(r"(?:Comercio|Establecimiento|Merchant)[:\s]*(.+)", re.IGNORECASE)
 CARD_RE = re.compile(r"(?:Tarjeta|Card)[^\d]{0,20}(\d{4})\b", re.IGNORECASE)
+
+# Palabras clave para clasificar el movimiento por su origen.
+CREDIT_CARD_RE = re.compile(r"tarjeta\s+de\s+cr[eé]dito|compra\s+con\s+tarjeta|autorizaci[oó]n", re.IGNORECASE)
+DEBIT_CARD_RE = re.compile(r"tarjeta\s+de\s+d[eé]bito|compra\s+con\s+d[eé]bito", re.IGNORECASE)
+TRANSFER_RE = re.compile(
+    r"transferencia|transferiste|dep[oó]sito|abono\s+a\s+cuenta|env[ií]o\s+de\s+dinero", re.IGNORECASE
+)
+
+
+def detect_transaction_type(subject: str, body: str) -> str:
+    text = f"{subject}\n{body}"
+    if CREDIT_CARD_RE.search(text):
+        return "tarjeta_credito"
+    if DEBIT_CARD_RE.search(text):
+        return "tarjeta_debito"
+    if TRANSFER_RE.search(text):
+        return "transferencia"
+    return "desconocido"
 
 
 def get_credentials() -> Credentials:
@@ -72,6 +90,7 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
         "amount": float(amount_match.group(1).replace(",", "")),
         "merchant": merchant_match.group(1).strip() if merchant_match else subject,
         "card_last4": card_match.group(1) if card_match else None,
+        "type": detect_transaction_type(subject, body),
         "bank": BANK_NAME,
         "subject": subject,
     }
@@ -93,7 +112,9 @@ def main() -> None:
     service = build("gmail", "v1", credentials=creds)
 
     after = (datetime.now(timezone.utc) - timedelta(days=SYNC_DAYS)).strftime("%Y/%m/%d")
-    query = f"from:{BANK_EMAIL} after:{after}"
+    senders = [s.strip() for s in BANK_EMAIL.split(",") if s.strip()]
+    from_clause = " OR ".join(f"from:{s}" for s in senders)
+    query = f"({from_clause}) after:{after}"
 
     data = load_existing()
     known_ids = {e["id"] for e in data["expenses"]}
