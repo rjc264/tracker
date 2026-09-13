@@ -117,6 +117,7 @@
   .badge { padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; white-space: nowrap; }
   .badge.tarjeta_credito { background: #4a90e233; color: #7fb2ee; }
   .badge.tarjeta_debito { background: #2ecc7133; color: #6bdb9d; }
+  .badge.tarjeta { background: #f1c40f33; color: #f5d76e; }
   .badge.transferencia { background: #9b59b633; color: #c393d6; }
   .badge.desconocido { background: #8b93a733; color: #b3bacb; }
   .badge.cat-salud { background: #e74c3c33; color: #f19c92; }
@@ -205,6 +206,7 @@
           <option value="">Todos</option>
           <option value="tarjeta_credito">Tarjeta de crédito</option>
           <option value="tarjeta_debito">Tarjeta de débito</option>
+          <option value="tarjeta">Tarjeta (sin clasificar)</option>
           <option value="transferencia">Transferencia</option>
           <option value="desconocido">Desconocido</option>
         </select>
@@ -275,12 +277,14 @@
   const typeLabels = {
     tarjeta_credito: 'Tarjeta de crédito',
     tarjeta_debito: 'Tarjeta de débito',
+    tarjeta: 'Tarjeta (sin clasificar)',
     transferencia: 'Transferencia',
     desconocido: 'Desconocido',
   };
   const typeColors = {
     tarjeta_credito: '#4a90e2',
     tarjeta_debito: '#2ecc71',
+    tarjeta: '#f1c40f',
     transferencia: '#9b59b6',
     desconocido: '#8b93a7',
   };

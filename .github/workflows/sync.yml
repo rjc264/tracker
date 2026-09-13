@@ -46,6 +46,7 @@ jobs:
           SYNC_DAYS: ${{ vars.SYNC_DAYS }}
           SYNC_SINCE: ${{ github.event.inputs.since }}
           SYNC_UNTIL: ${{ github.event.inputs.until }}
+          CARD_TYPE_MAP: ${{ vars.CARD_TYPE_MAP }}
           DASHBOARD_PASSPHRASE: ${{ secrets.DASHBOARD_PASSPHRASE }}
         run: python gmail_reader.py
 

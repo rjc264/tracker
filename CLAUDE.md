@@ -17,12 +17,22 @@ Gmail API ──(cron diario)──> gmail_reader.py ──cifra (AES-GCM)──
 ```
 
 - **`gmail_reader.py`**: script principal. Busca correos de `BANK_EMAIL` vía
-  Gmail API (scope `gmail.readonly`), extrae monto/comercio/tarjeta con regex
-  (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`), clasifica el tipo de movimiento
-  (`detect_transaction_type`: `tarjeta_credito` / `tarjeta_debito` /
-  `transferencia` / `desconocido`), y cifra el resultado con
-  `crypto_utils.encrypt_json`. Tiene retry con backoff (`execute_with_retry`)
-  para el error de cuota de Gmail (`rateLimitExceeded`).
+  Gmail API (scope `gmail.readonly`) y parsea el formato real confirmado del
+  correo "Alerta PRF BAC Credomatic" (texto plano linealizado desde una tabla
+  HTML: `TABLE_MERCHANT_AMOUNT_RE`, `TABLE_STATUS_RE`, `CARD_LAST4_RE` — ver
+  el comentario junto a esos regex para el formato exacto). `AMOUNT_RE` /
+  `MERCHANT_RE` / `CARD_RE` genéricos quedan como **fallback** por si otro
+  tipo de correo de BAC (transferencias, etc.) usa un formato distinto —
+  aún no confirmado con un correo real, ajústalo si aparece.
+  Transacciones con `Estado` != "Aprobada" (rechazadas/declinadas) se
+  descartan en `parse_transaction` (no son gasto real).
+  **El correo nunca dice si la tarjeta es de crédito o débito** — solo la
+  marca y los últimos 4 dígitos —, así que `detect_transaction_type`
+  primero consulta `CARD_TYPE_MAP` (variable opcional `ultimos4:tipo,...`,
+  ver más abajo); si no hay mapeo cae a `tarjeta` (genérico) en vez de
+  inventar crédito/débito. Cifra el resultado con `crypto_utils.encrypt_json`.
+  Tiene retry con backoff (`execute_with_retry`) para el error de cuota de
+  Gmail (`rateLimitExceeded`).
 - **`crypto_utils.py`**: cifrado compartido (AES-GCM + PBKDF2-HMAC-SHA256,
   210,000 iteraciones). Debe mantenerse en espejo exacto con el descifrado en
   JavaScript dentro de `dashboard.html` (mismo formato de envelope: `salt`,
@@ -73,6 +83,11 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   `SYNC_DAYS`. Los manda `sync.yml` desde `github.event.inputs.since/until`
   cuando el dashboard dispara el workflow manualmente; vacíos en el cron
   diario.
+- `CARD_TYPE_MAP` (GitHub Variable opcional) — `"ultimos4:tipo,ultimos4:tipo"`
+  (ej. `"8825:tarjeta_credito,4321:tarjeta_debito"`). El correo de BAC no
+  distingue crédito de débito; esto es lo único que lo suple. Sin este mapeo,
+  las compras con tarjeta quedan clasificadas como `type: "tarjeta"`
+  (genérico) en vez de `tarjeta_credito`/`tarjeta_debito`.
 
 ## Convenciones importantes
 

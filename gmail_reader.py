@@ -37,20 +37,52 @@ DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
 SYNC_SINCE = os.environ.get("SYNC_SINCE") or None
 SYNC_UNTIL = os.environ.get("SYNC_UNTIL") or None
 
-# NOTA: ajusta estos patrones al formato real de los correos de tu banco.
+# Formato real confirmado del correo "Alerta PRF BAC Credomatic" (texto plano,
+# linealizado desde una tabla HTML): las etiquetas aparecen antes que sus
+# valores, cada una en su propia línea. Ej.:
+#   Comercio\n\nMonto\n\nSELECTOS MASFERRER\n\n7.67
+#   Fecha y hora\n\n2026/09/12-21:40:01
+#   Tipo de la compra\n\nEstado\n\nTarjeta Presente\n\nAprobada
+# Este correo NUNCA dice si la tarjeta es de crédito o débito (solo la marca
+# y los últimos 4 dígitos) — ver CARD_TYPE_MAP más abajo.
+TABLE_MERCHANT_AMOUNT_RE = re.compile(
+    r"Comercio\s*\n+\s*Monto\s*\n+\s*(?P<merchant>.+?)\s*\n+\s*(?P<amount>[\d,]+\.\d{2})",
+    re.IGNORECASE,
+)
+TABLE_STATUS_RE = re.compile(
+    r"Tipo\s+de\s+la\s+compra\s*\n+\s*Estado\s*\n+\s*(?P<presence>.+?)\s*\n+\s*(?P<status>.+?)\s*\n",
+    re.IGNORECASE,
+)
+CARD_LAST4_RE = re.compile(r"tarjeta\s+\S+\s+terminada\s+en\s+(\d{4})", re.IGNORECASE)
+APPROVED_RE = re.compile(r"aprob", re.IGNORECASE)
+
+# Fallback genérico ("Comercio: X", "Monto: $X") por si otro tipo de correo de
+# BAC (ej. transferencias) usa un formato distinto al de la tabla de arriba.
 AMOUNT_RE = re.compile(r"(?:Monto|Amount)[:\s]*[A-Z]{0,3}\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
 MERCHANT_RE = re.compile(r"(?:Comercio|Establecimiento|Merchant)[:\s]*(.+)", re.IGNORECASE)
 CARD_RE = re.compile(r"(?:Tarjeta|Card)[^\d]{0,20}(\d{4})\b", re.IGNORECASE)
 
-# Palabras clave para clasificar el movimiento por su origen.
-CREDIT_CARD_RE = re.compile(r"tarjeta\s+de\s+cr[eé]dito|compra\s+con\s+tarjeta|autorizaci[oó]n", re.IGNORECASE)
-DEBIT_CARD_RE = re.compile(r"tarjeta\s+de\s+d[eé]bito|compra\s+con\s+d[eé]bito", re.IGNORECASE)
+# Palabras clave para clasificar el movimiento por su origen. El correo real
+# no distingue crédito de débito, así que primero se intenta CARD_TYPE_MAP.
+CREDIT_CARD_RE = re.compile(r"tarjeta\s+de\s+cr[eé]dito|autorizaci[oó]n", re.IGNORECASE)
+DEBIT_CARD_RE = re.compile(r"tarjeta\s+de\s+d[eé]bito", re.IGNORECASE)
 TRANSFER_RE = re.compile(
     r"transferencia|transferiste|dep[oó]sito|abono\s+a\s+cuenta|env[ií]o\s+de\s+dinero", re.IGNORECASE
 )
 
+# Mapa opcional "ultimos4:tipo,ultimos4:tipo" (ej. "8825:tarjeta_credito,
+# 4321:tarjeta_debito") para GitHub Variable CARD_TYPE_MAP. El correo del
+# banco nunca dice si una tarjeta es de crédito o débito — solo tú lo sabes.
+CARD_TYPE_MAP = {}
+for _pair in (os.environ.get("CARD_TYPE_MAP") or "").split(","):
+    if ":" in _pair:
+        _last4, _kind = _pair.split(":", 1)
+        CARD_TYPE_MAP[_last4.strip()] = _kind.strip()
 
-def detect_transaction_type(subject: str, body: str) -> str:
+
+def detect_transaction_type(subject: str, body: str, card_last4: Optional[str] = None) -> str:
+    if card_last4 and card_last4 in CARD_TYPE_MAP:
+        return CARD_TYPE_MAP[card_last4]
     text = f"{subject}\n{body}"
     if CREDIT_CARD_RE.search(text):
         return "tarjeta_credito"
@@ -58,6 +90,10 @@ def detect_transaction_type(subject: str, body: str) -> str:
         return "tarjeta_debito"
     if TRANSFER_RE.search(text):
         return "transferencia"
+    if card_last4:
+        # Sabemos que es una compra con tarjeta, pero no si es crédito o
+        # débito (el correo no lo dice y no está en CARD_TYPE_MAP).
+        return "tarjeta"
     return "desconocido"
 
 
@@ -71,7 +107,7 @@ CATEGORY_PATTERNS = [
         re.IGNORECASE,
     )),
     ("alimentacion", re.compile(
-        r"super|despensa|walmart|pricesmart|la\s+colonia|restaurant|pizz|burger|mcdonald|"
+        r"super|selectos|despensa|walmart|pricesmart|la\s+colonia|restaurant|pizz|burger|mcdonald|"
         r"wendy|kfc|popeyes|pollo\s+campero|subway|starbucks|dunkin|caf[eé]|panader|"
         r"comida|food|delivery|pedidosya|rappi|uber\s*eats|didi\s*food",
         re.IGNORECASE,
@@ -155,19 +191,38 @@ def extract_text(payload: dict) -> str:
 
 
 def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) -> Optional[dict]:
-    amount_match = AMOUNT_RE.search(body) or AMOUNT_RE.search(subject)
-    if not amount_match:
-        return None
-    merchant_match = MERCHANT_RE.search(body)
-    card_match = CARD_RE.search(body)
-    merchant = merchant_match.group(1).strip() if merchant_match else subject
+    table_match = TABLE_MERCHANT_AMOUNT_RE.search(body)
+    if table_match:
+        merchant = table_match.group("merchant").strip()
+        amount = float(table_match.group("amount").replace(",", ""))
+    else:
+        # Fallback para formatos que no sean la tabla "Comercio/Monto".
+        amount_match = AMOUNT_RE.search(body) or AMOUNT_RE.search(subject)
+        if not amount_match:
+            return None
+        merchant_match = MERCHANT_RE.search(body)
+        merchant = merchant_match.group(1).strip() if merchant_match else subject
+        amount = float(amount_match.group(1).replace(",", ""))
+
+    status_match = TABLE_STATUS_RE.search(body)
+    card_present = None
+    if status_match:
+        if not APPROVED_RE.search(status_match.group("status")):
+            # Transacción rechazada/declinada: no es un gasto real.
+            return None
+        card_present = "no presente" not in status_match.group("presence").lower()
+
+    card_match = CARD_LAST4_RE.search(body) or CARD_RE.search(body)
+    card_last4 = card_match.group(1) if card_match else None
+
     return {
         "id": msg_id,
         "date": datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc).isoformat(),
-        "amount": float(amount_match.group(1).replace(",", "")),
+        "amount": amount,
         "merchant": merchant,
-        "card_last4": card_match.group(1) if card_match else None,
-        "type": detect_transaction_type(subject, body),
+        "card_last4": card_last4,
+        "card_present": card_present,
+        "type": detect_transaction_type(subject, body, card_last4),
         "category": detect_category(merchant, subject, body),
         "bank": BANK_NAME,
         "subject": subject,
@@ -226,11 +281,15 @@ def main() -> None:
             time.sleep(0.2)
         request = service.users().messages().list_next(request, response)
 
-    # Recategoriza todas las transacciones (no solo las nuevas) por si
-    # CATEGORY_PATTERNS cambió desde el último sync. Usa merchant/subject
-    # ya guardados, porque el cuerpo del correo no se persiste.
+    # Reclasifica todas las transacciones (no solo las nuevas) por si
+    # CATEGORY_PATTERNS o CARD_TYPE_MAP cambiaron desde el último sync. Usa
+    # merchant/subject/card_last4 ya guardados, porque el cuerpo del correo
+    # no se persiste.
     for expense in data["expenses"]:
         expense["category"] = detect_category(expense.get("merchant", ""), expense.get("subject", ""))
+        expense["type"] = detect_transaction_type(
+            expense.get("subject", ""), "", expense.get("card_last4")
+        )
 
     data["expenses"].sort(key=lambda e: e["date"], reverse=True)
     data["last_sync"] = datetime.now(timezone.utc).isoformat()
