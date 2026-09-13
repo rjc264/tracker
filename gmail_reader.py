@@ -164,8 +164,11 @@ def detect_transaction_type(subject: str, body: str, card_last4: Optional[str] =
 # subcategoría nueva aquí, agrégala también ahí.
 
 # Prefijos de procesador de pago a quitar del comercio mostrado (Reglas #1).
-# Puede haber más de uno encadenado (ej. "DLOCAL* DLC TEMU").
-_PROCESSOR_PREFIX_RE = re.compile(r"^\s*(WOMPI|DLOCAL|DLC|PAYPAL)[\*\s]+", re.IGNORECASE)
+# Puede haber más de uno encadenado (ej. "DLOCAL* DLC TEMU"). N1CO aparece
+# como "Procesador / canal" en Clasificacion...ACTUALIZADO_JULIO2026.xlsx
+# (hoja "Comercios SV", fila VIDRI) igual que WOMPI/DLOCAL, de ahí que
+# "N1CO*LA CLASICA CH" se trate igual (se limpia a "LA CLASICA CH").
+_PROCESSOR_PREFIX_RE = re.compile(r"^\s*(WOMPI|DLOCAL|DLC|PAYPAL|N1CO)[\*\s]+", re.IGNORECASE)
 
 
 def normalize_merchant(raw: str) -> str:
@@ -197,6 +200,84 @@ BRAND_RULES = [
     (r"\banda\b", "ANDA", "hogar_servicios", "agua"),
     (r"disney\+?", "Disney+", "entretenimiento", "streaming"),
     (r"transfer\s*365", "Transfer365", "finanzas", "transferencias"),
+
+    # --- Clasificacion_Comercios_El_Salvador_ACTUALIZADO_JULIO2026.xlsx,
+    # hoja "Comercios SV" (confianza Alta/Media). Los de confianza Baja cuyo
+    # destino ya es "Otros/Sin identificar" no se listan aparte: caen ahí
+    # solo con normalize_merchant (quita el prefijo WOMPI*/PAYPAL*/etc.), sin
+    # necesidad de una regla explícita.
+    # OJO: se omitió a propósito "WOMPI*RODRIGO CAMPOS" -> el nombre del
+    # propio dueño de la cuenta aparece en el saludo de casi todos los
+    # correos de BAC ("Estimado(a): RODRIGO JOSUE..."), así que esa regla
+    # habría clasificado como "pago a persona" prácticamente todo.
+    (r"\badoc\b", "ADOC", "compras", "calzado"),
+    (r"aic\s+promotions", "AIC Promotions", "otros", "servicios_promociones"),
+    (r"amazon\s+web\s+services", "Amazon Web Services", "tecnologia_software", "cloud"),
+    (r"\bapple\b", "Apple", "tecnologia_software", "apps_software"),
+    (r"beer\s+station", "Beer Station", "alimentacion", "bares_gastrobares"),
+    (r"best\s+buy", "Best Buy", "compras", "tecnologia"),
+    (r"la\s+bodega\s+beers", "La Bodega / Beer Station", "alimentacion", "bares_gastrobares"),
+    (r"bufalo.?s\s+la\s+eskina", "Buffalo's (La Eskina)", "alimentacion", "restaurantes"),
+    (r"buffalo\s+wings", "Buffalo Wings", "alimentacion", "restaurantes"),
+    # llao_llao antes que art_haus: "LLAOLLAO ART HAUS SN B" es un Llao Llao
+    # (heladería) dentro del local "Art Haus", no el local en sí.
+    (r"llao\s*llao", "Llao Llao", "alimentacion", "postres_helados"),
+    (r"\bart\s+haus\b", "Art Haus", "entretenimiento", "cine_cultura"),
+    (r"gran\s+via\s+paystat", "La Gran Vía (parqueo)", "otros", "servicios_estacionamiento"),
+    (r"beto.?s\s+market", "Beto's Market", "alimentacion", "supermercado"),
+    (r"centros\s+penales", "Centros Penales", "gobierno", "gobierno"),
+    (r"chamos\s+led", "Chamos LED", "compras", "hogar"),
+    (r"coctelitos\s+lala", "Coctelitos Lala", "alimentacion", "bares_gastrobares"),
+    (r"di\s+lucca", "Di Lucca", "alimentacion", "restaurantes"),
+    (r"dollar\s+city", "Dollar City", "compras", "hogar"),
+    (r"\bdonkeys\b", "Donkeys", "alimentacion", "restaurantes"),
+    (r"el\s+lomo\s+y\s+la\s+aguja", "El Lomo y La Aguja", "alimentacion", "restaurantes"),
+    (r"el\s+patio\s+sport\s+grill", "El Patio Sport Grill", "alimentacion", "bares_gastrobares"),
+    (r"elegant\s+nails", "Elegant Nails", "cuidado_personal", "belleza"),
+    (r"estacionamiento\s+ccpm", "Estacionamiento CCPM", "transporte", "parqueos"),
+    (r"faith\s+flowers", "Faith Flowers", "cuidado_personal", "flores_regalos"),
+    (r"fcia\s+eco", "Farmacia Económica", "salud", "farmacia"),
+    (r"fcia\s+san\s+rafael", "Farmacia San Rafael", "salud", "farmacia"),
+    (r"flying\s+tiger", "Flying Tiger", "compras", "hogar"),
+    (r"foot\s+clinic", "Foot Clinic", "salud", "medico_clinicas"),
+    (r"galer[ií]a\s+de\s+flores", "Galería de Flores", "cuidado_personal", "flores_regalos"),
+    (r"\bgelu\b", "Gelu", "alimentacion", "postres_helados"),
+    (r"go\s+green", "Go Green", "alimentacion", "restaurantes"),
+    (r"helados\s+sarita", "Helados Sarita", "alimentacion", "postres_helados"),
+    (r"importadora\s+ram[ií]rez", "Importadora Ramírez", "transporte", "repuestos_automotrices"),
+    (r"joyer[ií]a\s+la\s+joya", "Joyería La Joya", "compras", "joyeria"),
+    # "LACA LACA SANTA ELENA" (con espacio, repetido) y "LACALACA..." (junto)
+    # son el mismo comercio ("La Calaca").
+    (r"la\s*calaca|laca\s*laca", "La Calaca", "alimentacion", "restaurantes"),
+    (r"luma\s+panader", "Luma Panadería", "alimentacion", "panaderia"),
+    (r"la\s+revuelta", "La Revuelta", "alimentacion", "restaurantes"),
+    (r"la\s+cl[aá]sica", "La Clásica", "alimentacion", "restaurantes"),
+    (r"old\s+navy", "Old Navy", "compras", "ropa"),
+    (r"omny\s+vending", "Omny Vending", "compras", "marketplace"),
+    (r"panaderi.{0,3}caf[eé]", "Panadería y Café", "alimentacion", "panaderia"),
+    (r"pavito\s+criollo", "Pavito Criollo", "alimentacion", "restaurantes"),
+    (r"pronto\s+(lourdes|tuscania)", "Pronto", "alimentacion", "conveniencia_tienda"),
+    (r"pupuser[ií]a\s+suiza", "Pupusería Suiza", "alimentacion", "restaurantes"),
+    (r"qpos\s+cubo\s+pago", "Cubo / QPOS", "otros", "pago_pos"),
+    (r"que\s+pizza", "Que Pizza", "alimentacion", "comida_rapida"),
+    (r"\brepublik\b", "Republik", "alimentacion", "bares_gastrobares"),
+    (r"sala\s+del\s+ovido", "Sala del Ovido", "entretenimiento", "cine_cultura"),
+    (r"san\s+mart[ií]n", "San Martín", "alimentacion", "panaderia"),
+    (r"santo\s+charro", "Santo Charro", "alimentacion", "restaurantes"),
+    (r"sertracen", "SERTRACEN", "transporte", "tramites_vehiculares"),
+    (r"\bsucree\b", "Sucree", "alimentacion", "restaurantes"),
+    (r"super\s+repuestos", "Super Repuestos", "transporte", "repuestos_automotrices"),
+    (r"lifemiles", "LifeMiles", "viajes", "programas_viajero"),
+    (r"speed\s+monkey", "Speed Monkey", "transporte", "servicios_automotrices"),
+    (r"smart\s*fix", "Smart Fix SV", "otros", "servicios_tecnicos"),
+    (r"taquer[ií]a\s+los\s+tapat[ií]os", "Taquería Los Tapatíos", "alimentacion", "restaurantes"),
+    (r"\btelecom\b", "Telecom", "hogar_servicios", "internet"),
+    (r"telem[oó]vil", "Telemóvil", "hogar_servicios", "telefonia_movil"),
+    (r"\buca\b", "UCA", "educacion", "educacion"),
+    (r"\buno\s+monumental\b", "Uno", "transporte", "combustible"),
+    (r"\bvidri\b", "VIDRI", "compras", "hogar"),
+    (r"walgreens", "Walgreens", "salud", "farmacia"),
+    (r"carters,?\s*inc", "Carter's", "compras", "ropa"),
 ]
 BRAND_RULES = [
     (re.compile(pattern, re.IGNORECASE), name, category, subcategory)
@@ -208,10 +289,12 @@ BRAND_RULES = [
 # real de tus comercios frecuentes si algo cae en "otros/sin_identificar".
 CATEGORY_TAXONOMY = [
     ("alimentacion", "supermercado", r"walmart|despensa\s+de\s+don\s+juan|pricesmart|la\s+colonia|super(?!visor)"),
-    ("alimentacion", "restaurantes", r"\bkoi\b|casa\s+parrillada|restaurant"),
-    ("alimentacion", "comida_rapida", r"subway|mcdonald|burger\s+king|mister\s+donut|wendy|kfc|popeyes|pollo\s+campero"),
+    ("alimentacion", "restaurantes", r"\bkoi\b|casa\s+parrillada|restaurant|taquer[ií]a|pupuser[ií]a"),
+    ("alimentacion", "comida_rapida", r"subway|mc\s*donald|burger\s+king|mister\s+donut|wendy|kfc|popeyes|pollo\s+campero"),
     ("alimentacion", "cafeterias", r"kind\s+coffee|cafeter[ií]a|\bcaf[eé]\b"),
-    ("alimentacion", "panaderia", r"panader[ií]a"),
+    # panader[ií]a? con "a" final opcional: los descriptores de banco suelen
+    # truncar (ej. "PANADERI Y CAFE" en vez de "PANADERIA Y CAFE").
+    ("alimentacion", "panaderia", r"panader[ií]a?"),
     ("alimentacion", "delivery", r"\bhugo\b|rappi|didi\s*food"),
     ("alimentacion", "bares_gastrobares", r"\bcadejo\b|beer\s+station|gastrobar|\bbar\b"),
     ("transporte", "combustible", r"\bshell\b|\bpuma\b|gasolinera|gasolina|combustible|esso"),
@@ -222,7 +305,7 @@ CATEGORY_TAXONOMY = [
     ("compras", "departamentales", r"almacenes\s+siman|\bsiman\b"),
     ("compras", "tecnologia", r"zona\s+digital"),
     ("compras", "marketplace", r"marketplace|\bamazon\b(?!\s*prime\s*video)|\bebay\b|aliexpress|\bshein\b"),
-    ("salud", "farmacia", r"farmaci"),
+    ("salud", "farmacia", r"farmaci|\bfcia\b"),
     ("salud", "medico_clinicas", r"cl[ií]nica|m[eé]dic|hospital"),
     ("salud", "dental", r"dental|dentista"),
     ("salud", "optica", r"[oó]ptica"),

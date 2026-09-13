@@ -100,28 +100,39 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
 - Los regex de parseo (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`) son genéricos y
   puede que necesiten ajustarse al formato real de los correos de BAC
   Credomatic si el parseo falla o extrae mal los campos.
-- `detect_category` devuelve `(categoria, subcategoria)` según la taxonomía de
-  `Clasificacion_Comercios_El_Salvador.xlsx` (hoja "Taxonomía": 13 categorías
-  ascii — alimentacion/transporte/compras/salud/cuidado_personal/
+- `detect_category` devuelve `(categoria, subcategoria)` según la taxonomía
+  base de `Clasificacion_Comercios_El_Salvador.xlsx` (hoja "Taxonomía": 13
+  categorías ascii — alimentacion/transporte/compras/salud/cuidado_personal/
   hogar_servicios/tecnologia_software/viajes/entretenimiento/finanzas/
   educacion/gobierno/otros — × 41 subcategorías; hoja "Reglas": normalizar
   comercio quitando prefijos de procesador antes de clasificar, priorizar
-  marca conocida sobre heurística genérica). Ese .xlsx es solo la fuente que
-  se usó para escribir `CATEGORY_TAXONOMY`/`BRAND_RULES` a mano — el script no
-  lo lee en runtime, no hace falta que esté en el repo.
-  `BRAND_RULES` (marcas confirmadas de la hoja "Ejemplos", ej. Pizza Hut,
-  Uber, Selectos, Claude) se evalúa primero y también fija el nombre de
+  marca conocida sobre heurística genérica), ampliada con
+  `Clasificacion_Comercios_El_Salvador_ACTUALIZADO_JULIO2026.xlsx` (misma
+  estructura + hoja "Comercios SV": ~70 comercios reales de El Salvador con
+  nivel de confianza Alta/Media/Baja, y hoja "Pendientes" para casos
+  ambiguos). Ambos .xlsx son solo la fuente que se usó para escribir
+  `CATEGORY_TAXONOMY`/`BRAND_RULES` a mano — el script no los lee en
+  runtime, no hace falta que estén en el repo.
+  `BRAND_RULES` (marcas confirmadas, ej. Pizza Hut, Uber, Selectos, Claude,
+  Walgreens, SERTRACEN...) se evalúa primero y también fija el nombre de
   comercio normalizado (`brand_display_name`, quita prefijos de procesador
-  tipo `WOMPI*`/`DLOCAL*`/`DLC`/`PAYPAL*` — `normalize_merchant` hace lo mismo
-  como fallback). Si nada matchea, cae a `CATEGORY_TAXONOMY` (genérico por
-  palabra clave) y por último a `("otros", "sin_identificar")`. Es heurístico:
-  ajusta las listas de palabras/marcas al vocabulario real de tus comercios
-  si algo cae en "otros". `main()` recalcula `category`/`subcategory`/`type`
-  para **todas** las transacciones (no solo las nuevas) en cada sync, usando
-  merchant/subject ya guardados (el cuerpo del correo no se persiste). El
-  dashboard usa las mismas claves en `categoryLabels`/`categoryColors`/
-  `subcategoryLabels` (JS) — si agregas categoría/subcategoría nueva en
-  Python, agrégala también ahí.
+  tipo `WOMPI*`/`DLOCAL*`/`DLC`/`PAYPAL*`/`N1CO*` — `normalize_merchant` hace
+  lo mismo como fallback). Si nada matchea, cae a `CATEGORY_TAXONOMY`
+  (genérico por palabra clave) y por último a `("otros", "sin_identificar")`.
+  Es heurístico: ajusta las listas de palabras/marcas al vocabulario real de
+  tus comercios si algo cae en "otros". **Se omitió a propósito** la fila de
+  "WOMPI*RODRIGO CAMPOS" del xlsx actualizado: el nombre del dueño de la
+  cuenta aparece en el saludo de casi todos los correos de BAC
+  ("Estimado(a): RODRIGO JOSUE..."), y como `detect_category` busca en
+  comercio+asunto+cuerpo combinados, esa regla habría clasificado como
+  "pago a persona" casi cualquier transacción — cuidado con este mismo riesgo
+  si agregas más reglas basadas en nombres de personas en vez de marcas.
+  `main()` recalcula `category`/`subcategory`/`type` para **todas** las
+  transacciones (no solo las nuevas) en cada sync, usando merchant/subject ya
+  guardados (el cuerpo del correo no se persiste). El dashboard usa las
+  mismas claves en `categoryLabels`/`categoryColors`/`subcategoryLabels`
+  (JS) — si agregas categoría/subcategoría nueva en Python, agrégala también
+  ahí.
 - `detect_direction` marca cada transacción como `"gasto"` o `"ingreso"` por
   defecto (asunto "detalle de crédito" o cuerpo "...ha recibido un abono a su
   cuenta..."), pero **dos formatos reales confirmados fijan `direction`
