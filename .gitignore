@@ -1,0 +1,50 @@
+# Credenciales y tokens (NUNCA SUBIR)
+config/
+credentials.json
+token.json
+
+# Datos de gastos
+data/
+expenses.json
+
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporal
+.tmp/
+tmp/
+*.tmp
+
+# Docker
+.docker/
+
+# Backups
+*.backup
+*.bak

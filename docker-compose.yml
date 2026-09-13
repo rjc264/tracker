@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  expense-tracker:
+    build: .
+    container_name: bac-expense-tracker
+
+    # Volúmenes para datos persistentes
+    volumes:
+      # Aquí va tu credentials.json y token.json
+      - ./config:/app/config
+      # Aquí se guardan los gastos (expenses.json)
+      - ./data:/app/data
+
+    # Variables de entorno
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CONFIG_DIR=/app/config
+      - DATA_DIR=/app/data
+
+    # Reinicia automáticamente si hay error
+    restart: unless-stopped
+
+    # Ejecutar cada día a las 7 AM
+    # (En producción, usar algo como APScheduler o cron)
+
+    # Recursos
+    # mem_limit: 512m
+    # cpus: '0.5'
+
+  # Servidor web para dashboard (opcional)
+  dashboard:
+    image: nginx:alpine
+    container_name: bac-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard.html:/usr/share/nginx/html/index.html:ro
+      - ./data/expenses.json:/usr/share/nginx/html/data/expenses.json:ro
+    restart: unless-stopped
+    environment:
+      - TZ=America/El_Salvador
+
+# Volúmenes nombrados para persistencia
+volumes:
+  config:
+  data:

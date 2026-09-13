@@ -1,0 +1,187 @@
+╔═══════════════════════════════════════════════════════════════════════╗
+║                   🐳 BAC EXPENSE TRACKER - DOCKER                    ║
+║                  Instalación en 5 Minutos (Sin Python)               ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+📋 ESTRUCTURA RÁPIDA:
+
+  expense-tracker/
+  ├── Dockerfile              ← Configuración del contenedor
+  ├── docker-compose.yml      ← Orquestación de servicios
+  ├── entrypoint.sh          ← Script de entrada
+  ├── gmail_reader.py        ← Lector de Gmail
+  ├── dashboard.html         ← Dashboard visual
+  ├── requirements.txt       ← Dependencias Python
+  ├── Makefile              ← Comandos simplificados
+  ├── .env.example          ← Variables de entorno
+  ├── .gitignore            ← Archivos a ignorar
+  ├── config/               ← Tus credenciales (crear)
+  │   └── credentials.json  ← Poner aquí
+  └── data/                 ← Tus gastos (se crea automático)
+      └── expenses.json     ← Se genera automáticamente
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 QUICK START (3 PASOS):
+
+1️⃣  INSTALAR DOCKER
+    ↳ https://www.docker.com/products/docker-desktop
+    ↳ Verifica: docker --version
+
+2️⃣  OBTENER CREDENCIALES
+    ✔ Ve a Google Cloud Console: https://console.cloud.google.com
+    ✔ Nuevo proyecto: "Expense Tracker BAC"
+    ✔ Habilita Gmail API
+    ✔ Crea credenciales OAuth2 (Aplicación de escritorio)
+    ✔ Descarga el JSON como "credentials.json"
+    ✔ Crea carpeta config/ y coloca el JSON ahí
+
+3️⃣  EJECUTAR COMANDOS
+
+    # Configurar Gmail (primera vez)
+    $ make setup
+
+    # Sincronizar gastos
+    $ make sync
+
+    # Ver dashboard
+    $ make dashboard
+    ↳ Abre http://localhost:8080
+
+¡LISTO! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💻 COMANDOS PRINCIPALES (USA "make" o "docker-compose"):
+
+CON MAKEFILE:
+  $ make setup       → Configurar Gmail
+  $ make sync        → Sincronizar ahora
+  $ make dashboard   → Ver dashboard en http://localhost:8080
+  $ make daemon      → Sincronizar cada hora (background)
+  $ make logs        → Ver logs en tiempo real
+  $ make down        → Detener servicios
+  $ make help        → Ver todos los comandos
+
+CON DOCKER-COMPOSE (si no tienes make):
+  $ docker-compose run expense-tracker setup
+  $ docker-compose run expense-tracker sync
+  $ docker-compose up dashboard
+  $ docker-compose up -d expense-tracker
+  $ docker-compose logs -f
+  $ docker-compose down
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 FLUJO TÍPICO:
+
+┌─────────────────────────────────────────────────────────────┐
+│ 1. make setup                                               │
+│    → Se abre navegador                                      │
+│    → Autorizas acceso a Gmail                               │
+│    → ✅ Listo                                               │
+└─────────────────────────────────────────────────────────────┘
+               ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. make sync                                                │
+│    → Lee emails de BAC                                      │
+│    → Extrae transacciones                                   │
+│    → Las guarda en data/expenses.json                       │
+│    → ✅ Sincronizado                                        │
+└─────────────────────────────────────────────────────────────┘
+               ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. make dashboard                                           │
+│    → Inicia servidor Nginx                                  │
+│    → Abre http://localhost:8080                             │
+│    → ✅ Ves tus gastos en gráficos                         │
+└─────────────────────────────────────────────────────────────┘
+               ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. make daemon (OPCIONAL - Para actualizaciones automáticas)│
+│    → Corre en background                                    │
+│    → Sincroniza cada hora                                   │
+│    → ✅ Sin intervención                                    │
+└─────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 ACTUALIZACIÓN AUTOMÁTICA (PRODUCCIÓN):
+
+Para ejecutar diariamente a las 7 AM:
+
+$ docker-compose -f docker-compose-prod.yml up -d
+
+Características:
+  ✅ Sincroniza automáticamente cada hora
+  ✅ Reinicia si hay error
+  ✅ Health checks
+  ✅ Logs persistentes
+  ✅ Límites de recursos
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ VENTAJAS DE DOCKER:
+
+  ✔ SIN INSTALAR PYTHON - Todo viene en el contenedor
+  ✔ REPRODUCIBLE - Funciona igual en Mac, Linux, Windows, VPS
+  ✔ AISLADO - No interfiere con otras aplicaciones
+  ✔ FÁCIL - Un comando y listo
+  ✔ ESCALABLE - Funciona en servidor sin cambios
+  ✔ SEGURO - Datos guardados localmente
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🆘 TROUBLESHOOTING:
+
+PROBLEMA: "Docker no está instalado"
+SOLUCIÓN: Descarga desde https://www.docker.com
+
+PROBLEMA: "Error: credentials.json no encontrado"
+SOLUCIÓN:
+  $ mkdir config
+  $ # Coloca credentials.json en config/
+
+PROBLEMA: "Error: conexión a Gmail"
+SOLUCIÓN:
+  $ rm config/token.json
+  $ make setup
+
+PROBLEMA: "Dashboard vacío"
+SOLUCIÓN:
+  $ make sync
+  $ # Recarga http://localhost:8080
+
+PROBLEMA: "Ver logs de error"
+SOLUCIÓN: $ make logs
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 ARCHIVOS IMPORTANTES:
+
+DOCKER_GUIDE.md         ← Guía completa (lee primero)
+Makefile               ← Comandos simplificados
+.gitignore             ← Qué no subir a Git (IMPORTANTE)
+config/                ← TUS CREDENCIALES (NO SUBIR A GIT)
+data/                  ← TUS GASTOS (BACKUP LOCAL)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 PRÓXIMOS PASOS:
+
+1. Lee DOCKER_GUIDE.md completo
+2. Instala Docker
+3. Crea config/credentials.json
+4. Ejecuta: make setup
+5. Ejecuta: make sync
+6. Abre: make dashboard
+7. ¡Disfruta! 💰
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🤔 ¿PREGUNTAS?
+
+Revisa DOCKER_GUIDE.md en la sección de troubleshooting.
+Cualquier duda, avísame.
+
+¡Feliz tracking! 🚀
