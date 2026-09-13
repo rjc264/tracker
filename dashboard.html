@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BAC Expense Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  .summary { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.5rem 0; }
+  .card { border: 1px solid #8884; border-radius: 8px; padding: 1rem 1.5rem; }
+  .card strong { display: block; font-size: 1.3rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
+  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8883; font-size: 0.9rem; }
+  #status { color: #888; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <h1>💰 BAC Expense Tracker</h1>
+  <p id="status">Cargando...</p>
+
+  <div class="summary">
+    <div class="card">Total<strong id="total">-</strong></div>
+    <div class="card">Transacciones<strong id="count">-</strong></div>
+    <div class="card">Última sincronización<strong id="lastSync">-</strong></div>
+  </div>
+
+  <canvas id="monthlyChart" height="100"></canvas>
+
+  <table>
+    <thead>
+      <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tarjeta</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    async function load() {
+      const status = document.getElementById('status');
+      try {
+        const res = await fetch('data/expenses.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudo cargar data/expenses.json');
+        const data = await res.json();
+        render(data);
+        status.textContent = '';
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    function render(data) {
+      const expenses = data.expenses || [];
+      const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+      document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+      document.getElementById('count').textContent = expenses.length;
+      document.getElementById('lastSync').textContent = data.last_sync
+        ? new Date(data.last_sync).toLocaleString()
+        : 'N/A';
+
+      const rows = document.getElementById('rows');
+      rows.innerHTML = expenses.map(e => `
+        <tr>
+          <td>${new Date(e.date).toLocaleDateString()}</td>
+          <td>${e.merchant ?? ''}</td>
+          <td>$${e.amount.toFixed(2)}</td>
+          <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
+        </tr>
+      `).join('');
+
+      const byMonth = {};
+      for (const e of expenses) {
+        const key = e.date.slice(0, 7);
+        byMonth[key] = (byMonth[key] || 0) + e.amount;
+      }
+      const labels = Object.keys(byMonth).sort();
+
+      new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Gasto mensual ($)', data: labels.map(l => byMonth[l]), backgroundColor: '#4a90e2' }]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    load();
+  </script>
+</body>
+</html>

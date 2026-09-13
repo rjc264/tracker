@@ -1,0 +1,49 @@
+name: Sync Gmail Expenses
+
+on:
+  schedule:
+    - cron: "0 13 * * *" # 07:00 America/El_Salvador (UTC-6)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Escribir credenciales de Gmail
+        run: |
+          mkdir -p config
+          echo "${{ secrets.GMAIL_CREDENTIALS_B64 }}" | base64 -d > config/credentials.json
+          echo "${{ secrets.GMAIL_TOKEN_B64 }}" | base64 -d > config/token.json
+
+      - name: Sincronizar gastos
+        env:
+          CONFIG_DIR: config
+          DATA_DIR: data
+          BANK_EMAIL: ${{ vars.BANK_EMAIL }}
+          BANK: ${{ vars.BANK }}
+          SYNC_DAYS: ${{ vars.SYNC_DAYS }}
+        run: python gmail_reader.py
+
+      - name: Eliminar credenciales temporales
+        if: always()
+        run: rm -rf config
+
+      - name: Commit y push si hay cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/expenses.json
+          git diff --cached --quiet && echo "Sin cambios nuevos" || git commit -m "chore: sync expenses $(date -u +%Y-%m-%d)"
+          git push

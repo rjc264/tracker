@@ -3,10 +3,6 @@ config/
 credentials.json
 token.json
 
-# Datos de gastos
-data/
-expenses.json
-
 # Environment
 .env
 .env.local
@@ -41,9 +37,6 @@ logs/
 .tmp/
 tmp/
 *.tmp
-
-# Docker
-.docker/
 
 # Backups
 *.backup
