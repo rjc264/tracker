@@ -1,0 +1,85 @@
+# CLAUDE.md
+
+Contexto del repo para agentes de IA (Claude/Copilot) que trabajen en este proyecto.
+
+## Qué es esto
+
+Tracker de gastos bancarios (BAC Credomatic) que corre 100% en GitHub Actions
+(sin servidor propio). Lee notificaciones de transacciones desde Gmail, las
+parsea, las cifra y las publica en un dashboard estático en GitHub Pages.
+
+No usa Docker (fue migrado deliberadamente de Docker a GitHub Actions).
+
+## Arquitectura
+
+```
+Gmail API ──(cron diario)──> gmail_reader.py ──cifra (AES-GCM)──> data/expenses.enc.json ──commit──> GitHub Pages
+```
+
+- **`gmail_reader.py`**: script principal. Busca correos de `BANK_EMAIL` vía
+  Gmail API (scope `gmail.readonly`), extrae monto/comercio/tarjeta con regex
+  (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`), clasifica el tipo de movimiento
+  (`detect_transaction_type`: `tarjeta_credito` / `tarjeta_debito` /
+  `transferencia` / `desconocido`), y cifra el resultado con
+  `crypto_utils.encrypt_json`. Tiene retry con backoff (`execute_with_retry`)
+  para el error de cuota de Gmail (`rateLimitExceeded`).
+- **`crypto_utils.py`**: cifrado compartido (AES-GCM + PBKDF2-HMAC-SHA256,
+  210,000 iteraciones). Debe mantenerse en espejo exacto con el descifrado en
+  JavaScript dentro de `dashboard.html` (mismo formato de envelope: `salt`,
+  `iv`, `iterations`, `ciphertext`, todo base64 excepto `iterations`).
+- **`dashboard.html`**: página estática publicada en GitHub Pages. Pide la
+  passphrase, deriva la clave con Web Crypto (`crypto.subtle`) y descifra
+  `data/expenses.enc.json` en el navegador. Nunca hay backend ni login real:
+  la "seguridad" es que sin la passphrase correcta el JSON es inútil.
+- **`.github/workflows/sync.yml`**: corre a diario (cron `0 13 * * *` =
+  07:00 El Salvador) y por `workflow_dispatch`. Escribe credenciales desde
+  Secrets, corre `gmail_reader.py`, commitea `data/expenses.enc.json` si
+  cambió, y dispara `pages.yml` manualmente (un push con `GITHUB_TOKEN` no
+  dispara otros workflows automáticamente).
+- **`.github/workflows/pages.yml`**: push-triggered (paths: `dashboard.html`,
+  `data/expenses.enc.json`) + `workflow_dispatch`. Publica `dashboard.html`
+  como `index.html` junto con el JSON cifrado.
+- **`generate_token.py`**: script local de un solo uso para generar
+  `token.json` vía OAuth y obtener los valores base64 para los Secrets.
+
+## Secrets y Variables de GitHub (repo `rjc264/tracker`, público)
+
+Secrets:
+- `GMAIL_CREDENTIALS_B64`, `GMAIL_TOKEN_B64` — credenciales OAuth de Gmail.
+- `DASHBOARD_PASSPHRASE` — passphrase usada para cifrar/descifrar. Write-only
+  (no se puede leer de vuelta desde GitHub); si se pierde, los datos cifrados
+  ya sincronizados no son recuperables.
+
+Variables:
+- `BANK_EMAIL` — remitentes reales separados por coma:
+  `notificaciones_bac@baccredomatic.sv,info@baccredomatic.com`
+- `BANK` = `BAC`
+- `SYNC_DAYS` = `30`
+
+## Convenciones importantes
+
+- Nunca imprimir contenido de correos (subject/body) en logs de Actions: son
+  públicos en un repo público y contienen datos financieros.
+- Los valores de entorno opcionales se leen con `os.environ.get(X) or "default"`
+  (no solo `.get(X, "default")`), porque GitHub puede pasar variables vacías
+  en vez de no definidas, y `""` es falsy pero no dispara el default de `.get`.
+- `data/expenses.enc.json` sí se versiona en git (a propósito, va cifrado).
+- Los regex de parseo (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`) son genéricos y
+  puede que necesiten ajustarse al formato real de los correos de BAC
+  Credomatic si el parseo falla o extrae mal los campos.
+
+## Comandos útiles
+
+```bash
+# Correr sync localmente
+pip install -r requirements.txt
+CONFIG_DIR=. DASHBOARD_PASSPHRASE="..." python gmail_reader.py
+
+# Disparar workflows manualmente
+gh workflow run sync.yml
+gh workflow run pages.yml
+
+# Ver estado de un run
+gh run view <run-id> --json status,conclusion,jobs
+gh run view <run-id> --log-failed
+```
