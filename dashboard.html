@@ -274,6 +274,17 @@
       <div class="chartBox" style="height:200px;"><canvas id="merchantChart"></canvas></div>
     </div>
 
+    <div class="panel" style="margin-bottom:1.25rem;">
+      <h2>💰 Ingresos</h2>
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Origen</th><th>Monto</th></tr>
+        </thead>
+        <tbody id="incomeRows"></tbody>
+      </table>
+      <p id="incomeEmptyState" hidden>No hay ingresos para este filtro.</p>
+    </div>
+
     <div class="panel">
       <h2>Transacciones</h2>
       <table>
@@ -478,6 +489,18 @@
     `;
     }).join('');
     emptyState.hidden = expenses.length !== 0;
+
+    // Apartado de ingresos (solo direction === 'ingreso', dentro del filtro activo)
+    const incomeRows = document.getElementById('incomeRows');
+    const incomeEmptyState = document.getElementById('incomeEmptyState');
+    incomeRows.innerHTML = ingresos.map(e => `
+      <tr>
+        <td>${new Date(e.date).toLocaleDateString()}</td>
+        <td>${e.merchant ?? ''}</td>
+        <td>$${e.amount.toFixed(2)}</td>
+      </tr>
+    `).join('');
+    incomeEmptyState.hidden = ingresos.length !== 0;
 
     // Tendencia diaria: gastos (rojo) vs ingresos (verde)
     const byDayGasto = {};

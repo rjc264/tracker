@@ -5,6 +5,7 @@ generado previamente con generate_token.py. Solo requiere el scope de lectura
 gmail.readonly, nunca modifica ni borra correos.
 """
 import base64
+import html
 import json
 import os
 import re
@@ -56,8 +57,64 @@ TABLE_STATUS_RE = re.compile(
 CARD_LAST4_RE = re.compile(r"tarjeta\s+\S+\s+terminada\s+en\s+(\d{4})", re.IGNORECASE)
 APPROVED_RE = re.compile(r"aprob", re.IGNORECASE)
 
+# Formato real confirmado "AVISO DE CREDITO-DEBITO": el detalle va en un
+# adjunto HTML (no en el cuerpo principal, ver extract_text), con la misma
+# estructura "etiqueta, salto de línea, valor" que el correo de compra. Se usa
+# para créditos/débitos directos a la cuenta (ej. depósitos), no compras.
+CREDIT_NOTICE_DIRECTION_RE = re.compile(r"Aviso\s+de:\s*\n+\s*(CR[EÉ]DITO|D[EÉ]BITO)", re.IGNORECASE)
+CREDIT_NOTICE_AMOUNT_RE = re.compile(r"Monto\.*:\s*\n+\s*[A-Z]{0,3}\**\s*([\d,]+\.\d{2})", re.IGNORECASE)
+CREDIT_NOTICE_REF_RE = re.compile(r"Referencia:\s*\n+\s*(\S+)", re.IGNORECASE)
+
+
+def parse_credit_notice(body: str) -> Optional[dict]:
+    direction_match = CREDIT_NOTICE_DIRECTION_RE.search(body)
+    amount_match = CREDIT_NOTICE_AMOUNT_RE.search(body)
+    if not direction_match or not amount_match:
+        return None
+    direction = "ingreso" if direction_match.group(1).upper().startswith(("CRE", "CRÉ")) else "gasto"
+    ref_match = CREDIT_NOTICE_REF_RE.search(body)
+    merchant = "Depósito recibido" if direction == "ingreso" else "Débito de cuenta"
+    if ref_match:
+        merchant += f" (ref. {ref_match.group(1)})"
+    return {
+        "amount": float(amount_match.group(1).replace(",", "")),
+        "merchant": merchant,
+        "direction": direction,
+    }
+
+
+# Formato real confirmado "Notificación de Transferencia Finalizada
+# Transfer365": mismo correo se usa para transferencias salientes y (se
+# asume, sin un ejemplo real que lo confirme) entrantes. No dice
+# explícitamente la dirección, así que se infiere comparando el nombre del
+# saludo ("Estimado(a): X") -- el dueño de la cuenta -- contra el
+# "Cliente:" de "Información Destino": si coinciden, el dinero entró a la
+# cuenta propia (ingreso); si no, salió hacia otra persona (gasto).
+TRANSFER365_AMOUNT_RE = re.compile(r"\bMonto:\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
+TRANSFER365_DEST_CLIENT_RE = re.compile(r"Cliente:\s*(.+)", re.IGNORECASE)
+GREETING_NAME_RE = re.compile(r"Estimado\(?a?\)?:\s*(.+?)[,.]", re.IGNORECASE)
+
+
+def parse_transfer365(body: str) -> Optional[dict]:
+    amount_match = TRANSFER365_AMOUNT_RE.search(body)
+    if not amount_match:
+        return None
+    dest_match = TRANSFER365_DEST_CLIENT_RE.search(body)
+    greeting_match = GREETING_NAME_RE.search(body)
+    dest_name = dest_match.group(1).strip() if dest_match else None
+    own_name = greeting_match.group(1).strip() if greeting_match else None
+    is_incoming = bool(dest_name and own_name and dest_name.upper() == own_name.upper())
+    direction = "ingreso" if is_incoming else "gasto"
+    merchant = "Transferencia recibida" if is_incoming else (dest_name or "Transferencia enviada")
+    return {
+        "amount": float(amount_match.group(1).replace(",", "")),
+        "merchant": merchant,
+        "direction": direction,
+    }
+
+
 # Fallback genérico ("Comercio: X", "Monto: $X") por si otro tipo de correo de
-# BAC (ej. transferencias) usa un formato distinto al de la tabla de arriba.
+# BAC usa un formato distinto a los ya confirmados arriba.
 AMOUNT_RE = re.compile(r"(?:Monto|Amount)[:\s]*[A-Z]{0,3}\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
 MERCHANT_RE = re.compile(r"(?:Comercio|Establecimiento|Merchant)[:\s]*(.+)", re.IGNORECASE)
 CARD_RE = re.compile(r"(?:Tarjeta|Card)[^\d]{0,20}(\d{4})\b", re.IGNORECASE)
@@ -262,29 +319,75 @@ def get_credentials() -> Credentials:
     return creds
 
 
-def extract_text(payload: dict) -> str:
-    if payload.get("body", {}).get("data"):
-        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def strip_html(text: str) -> str:
+    """Convierte HTML a texto plano lineal: cada tag se vuelve salto de línea
+    (así "Etiqueta<br>Valor" separa igual que "Etiqueta\\n\\nValor" en los
+    correos que ya son texto plano) y decodifica entidades (&aacute;, etc.)."""
+    return html.unescape(_HTML_TAG_RE.sub("\n", text))
+
+
+def extract_text(service, msg_id: str, payload: dict) -> str:
+    """Concatena el texto de TODAS las partes del correo (no solo la
+    primera): algunas notificaciones de BAC (ej. "AVISO DE CREDITO-DEBITO")
+    ponen el detalle de la transacción en un adjunto HTML, no en el cuerpo
+    principal, así que quedarse con la primera parte con contenido las
+    perdía por completo."""
+    texts = []
+    body = payload.get("body", {}) or {}
+    mime_type = payload.get("mimeType", "")
+    if body.get("data"):
+        texts.append(base64.urlsafe_b64decode(body["data"]).decode("utf-8", errors="ignore"))
+    elif body.get("attachmentId") and mime_type.startswith("text/"):
+        attachment = execute_with_retry(
+            service.users().messages().attachments().get(
+                userId="me", messageId=msg_id, id=body["attachmentId"]
+            )
+        )
+        texts.append(base64.urlsafe_b64decode(attachment["data"]).decode("utf-8", errors="ignore"))
     for part in payload.get("parts", []) or []:
-        text = extract_text(part)
+        text = extract_text(service, msg_id, part)
         if text:
-            return text
-    return ""
+            texts.append(text)
+    return strip_html("\n".join(texts))
 
 
 def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) -> Optional[dict]:
+    direction_override = None
+    # Solo un comercio "crudo" (sacado de una compra con tarjeta o del
+    # fallback genérico) pasa por brand_display_name/normalize_merchant. Los
+    # nombres que ya arman parse_credit_notice/parse_transfer365 (ej.
+    # "Valeria Hernandez", "Depósito recibido") son semánticos, no un
+    # descriptor de banco a limpiar — normalizarlos los pisaría con genéricos
+    # como "Transfer365" (BRAND_RULES matchea eso contra el propio asunto).
+    raw_merchant = True
     table_match = TABLE_MERCHANT_AMOUNT_RE.search(body)
     if table_match:
         merchant = table_match.group("merchant").strip()
         amount = float(table_match.group("amount").replace(",", ""))
     else:
-        # Fallback para formatos que no sean la tabla "Comercio/Monto".
-        amount_match = AMOUNT_RE.search(body) or AMOUNT_RE.search(subject)
-        if not amount_match:
-            return None
-        merchant_match = MERCHANT_RE.search(body)
-        merchant = merchant_match.group(1).strip() if merchant_match else subject
-        amount = float(amount_match.group(1).replace(",", ""))
+        credit_notice = parse_credit_notice(body)
+        transfer365 = parse_transfer365(body) if not credit_notice else None
+        if credit_notice:
+            merchant = credit_notice["merchant"]
+            amount = credit_notice["amount"]
+            direction_override = credit_notice["direction"]
+            raw_merchant = False
+        elif transfer365:
+            merchant = transfer365["merchant"]
+            amount = transfer365["amount"]
+            direction_override = transfer365["direction"]
+            raw_merchant = False
+        else:
+            # Fallback para formatos que no sean ninguno de los confirmados arriba.
+            amount_match = AMOUNT_RE.search(body) or AMOUNT_RE.search(subject)
+            if not amount_match:
+                return None
+            merchant_match = MERCHANT_RE.search(body)
+            merchant = merchant_match.group(1).strip() if merchant_match else subject
+            amount = float(amount_match.group(1).replace(",", ""))
 
     status_match = TABLE_STATUS_RE.search(body)
     card_present = None
@@ -297,7 +400,8 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
     card_match = CARD_LAST4_RE.search(body) or CARD_RE.search(body)
     card_last4 = card_match.group(1) if card_match else None
 
-    merchant = brand_display_name(merchant, subject, body) or normalize_merchant(merchant)
+    if raw_merchant:
+        merchant = brand_display_name(merchant, subject, body) or normalize_merchant(merchant)
     category, subcategory = detect_category(merchant, subject, body)
 
     return {
@@ -310,7 +414,7 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
         "type": detect_transaction_type(subject, body, card_last4),
         "category": category,
         "subcategory": subcategory,
-        "direction": detect_direction(subject, body),
+        "direction": direction_override or detect_direction(subject, body),
         "bank": BANK_NAME,
         "subject": subject,
     }
@@ -359,7 +463,7 @@ def main() -> None:
                 service.users().messages().get(userId="me", id=msg_ref["id"], format="full")
             )
             headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
-            body = extract_text(msg["payload"])
+            body = extract_text(service, msg_ref["id"], msg["payload"])
             transaction = parse_transaction(headers.get("Subject", ""), body, msg_ref["id"], msg["internalDate"])
             if transaction:
                 data["expenses"].append(transaction)

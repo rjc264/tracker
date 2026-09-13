@@ -122,18 +122,32 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   dashboard usa las mismas claves en `categoryLabels`/`categoryColors`/
   `subcategoryLabels` (JS) — si agregas categoría/subcategoría nueva en
   Python, agrégala también ahí.
-- `detect_direction` marca cada transacción como `"gasto"` o `"ingreso"`:
-  ingreso si el asunto dice "detalle de crédito" o el cuerpo dice "...ha
-  recibido un abono a su cuenta..." (son movimientos de abono/depósito, no
-  gasto real). **Aún no confirmado con un correo real de ese tipo** — a
-  diferencia del correo de compra (`TABLE_MERCHANT_AMOUNT_RE`), no se sabe si
-  el monto de un abono usa el mismo formato de tabla o uno distinto; si estas
-  notificaciones no aparecen en el dashboard, es porque `AMOUNT_RE` (fallback
-  genérico) no les extrae el monto — pide un correo real ("Mostrar original"
-  en Gmail) para escribirle un regex de tabla dedicado, igual que se hizo para
-  las compras. Como el cuerpo del correo no se persiste, la reclasificación de
-  `direction` en `main()` para transacciones ya sincronizadas solo puede usar
-  la señal del asunto, no la del cuerpo.
+- `detect_direction` marca cada transacción como `"gasto"` o `"ingreso"` por
+  defecto (asunto "detalle de crédito" o cuerpo "...ha recibido un abono a su
+  cuenta..."), pero **dos formatos reales confirmados fijan `direction`
+  directamente** (`direction_override` en `parse_transaction`, tiene
+  prioridad sobre `detect_direction`):
+  - **"AVISO DE CREDITO-DEBITO"** (`parse_credit_notice`): el detalle va en
+    un **adjunto HTML**, no en el cuerpo principal — por eso `extract_text`
+    ahora concatena TODAS las partes del correo (antes solo tomaba la
+    primera con contenido, que era la introducción genérica, no el adjunto
+    con los datos reales) y descarga el adjunto vía
+    `messages().attachments().get()` cuando no viene inline. El campo
+    "Aviso de:" dice literalmente `CREDITO` o `DEBITO` → esa es la dirección,
+    sin heurística.
+  - **"Notificación de Transferencia Finalizada Transfer365"**
+    (`parse_transfer365`): el correo **no dice la dirección explícitamente**
+    (sirve tanto para transferencias salientes como, se asume, entrantes) —
+    se infiere comparando el nombre del saludo ("Estimado(a): X", el dueño de
+    la cuenta) contra "Cliente:" de "Información Destino": si coinciden es
+    `ingreso`, si no, `gasto` (el ejemplo confirmado era saliente: el usuario
+    transfirió a otra persona). Esta heurística de comparación de nombres
+    **no está confirmada con un ejemplo entrante real** — si alguna vez
+    aparece uno y no clasifica bien, hay que revisarla.
+  Como el cuerpo del correo no se persiste, la reclasificación de
+  `category`/`type`/`direction` en `main()` para transacciones ya
+  sincronizadas solo puede usar subject/merchant ya guardados, no
+  volver a correr `parse_credit_notice`/`parse_transfer365`.
 
 ## Comandos útiles
 
