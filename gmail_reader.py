@@ -26,9 +26,9 @@ CREDENTIALS_FILE = CONFIG_DIR / os.environ.get("CREDENTIALS_FILE_NAME", "credent
 TOKEN_FILE = CONFIG_DIR / os.environ.get("TOKEN_FILE_NAME", "token.json")
 EXPENSES_FILE = DATA_DIR / "expenses.enc.json"
 
-BANK_EMAIL = os.environ.get("BANK_EMAIL", "notificaciones@bac.com.sv")
-BANK_NAME = os.environ.get("BANK", "BAC")
-SYNC_DAYS = int(os.environ.get("SYNC_DAYS", "30"))
+BANK_EMAIL = os.environ.get("BANK_EMAIL") or "notificaciones@bac.com.sv"
+BANK_NAME = os.environ.get("BANK") or "BAC"
+SYNC_DAYS = int(os.environ.get("SYNC_DAYS") or "30")
 DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
 
 # NOTA: ajusta estos patrones al formato real de los correos de tu banco.
