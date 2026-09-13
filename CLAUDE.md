@@ -85,6 +85,16 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
 - Los regex de parseo (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`) son genéricos y
   puede que necesiten ajustarse al formato real de los correos de BAC
   Credomatic si el parseo falla o extrae mal los campos.
+- `detect_category` clasifica cada gasto (alimentacion/transporte/
+  entretenimiento/viajes/salud/servicios/vivienda/compras/otros) por palabras
+  clave sobre comercio+asunto+cuerpo (`CATEGORY_PATTERNS`, primera coincidencia
+  gana). Es heurístico, no viene del banco: ajusta las listas de palabras al
+  vocabulario real de tus comercios frecuentes. `main()` recalcula `category`
+  para **todas** las transacciones (no solo las nuevas) en cada sync, usando
+  merchant/subject ya guardados (el cuerpo del correo no se persiste), así que
+  mejorar `CATEGORY_PATTERNS` reclasifica también el historial. El dashboard
+  usa las mismas claves de categoría en `categoryLabels`/`categoryColors`
+  (JS) — si agregas una categoría nueva en Python, agrégala también ahí.
 
 ## Comandos útiles
 

@@ -61,6 +61,60 @@ def detect_transaction_type(subject: str, body: str) -> str:
     return "desconocido"
 
 
+# Categorización por palabra clave sobre comercio + asunto + cuerpo del correo.
+# Es heurística (no hay categoría real en la notificación del banco): ajusta
+# las listas de palabras al vocabulario real de tus comercios frecuentes.
+# El orden importa (se evalúa de arriba hacia abajo, gana la primera que matchee).
+CATEGORY_PATTERNS = [
+    ("salud", re.compile(
+        r"farmaci|hospital|cl[ií]nica|laboratorio|dental|[oó]ptica|m[eé]dic|seguro\s+m[eé]dico",
+        re.IGNORECASE,
+    )),
+    ("alimentacion", re.compile(
+        r"super|despensa|walmart|pricesmart|la\s+colonia|restaurant|pizz|burger|mcdonald|"
+        r"wendy|kfc|popeyes|pollo\s+campero|subway|starbucks|dunkin|caf[eé]|panader|"
+        r"comida|food|delivery|pedidosya|rappi|uber\s*eats|didi\s*food",
+        re.IGNORECASE,
+    )),
+    ("transporte", re.compile(
+        r"uber(?!\s*eats)|cabify|indriver|didi(?!\s*food)|taxi|gasolina|gasolinera|combustible|"
+        r"esso|texaco|puma\s+energy|shell|parqueo|parking|peaje|autob[uú]s\b",
+        re.IGNORECASE,
+    )),
+    ("entretenimiento", re.compile(
+        r"netflix|spotify|disney\+?|hbo|amazon\s*prime\s*video|youtube\s*premium|cinemark|"
+        r"cinepolis|cine\b|steam|playstation|xbox|casino|discoteca|videojuego",
+        re.IGNORECASE,
+    )),
+    ("viajes", re.compile(
+        r"booking\.com|airbnb|despegar|avianca|volaris|copa\s+airlines|aeroline|hotel\b|hostal",
+        re.IGNORECASE,
+    )),
+    ("servicios", re.compile(
+        r"claro\b|tigo\b|movistar|digicel|cable\b|internet\b|electricidad|factura\s+de\s+luz|"
+        r"agua\s+potable|\banda\b|del\s+sur|telefon[ií]a|plan\s+de\s+celular",
+        re.IGNORECASE,
+    )),
+    ("vivienda", re.compile(
+        r"alquiler|renta\s+de\s+casa|hipoteca|ferreter|condominio|mantenimiento\s+del?\s+hogar",
+        re.IGNORECASE,
+    )),
+    ("compras", re.compile(
+        r"amazon(?!\s*prime\s*video)|ebay|aliexpress|siman\b|la\s+curacao|shein|mall\b|"
+        r"tienda\b|zara\b|best\s+buy",
+        re.IGNORECASE,
+    )),
+]
+
+
+def detect_category(merchant: str, subject: str, body: str = "") -> str:
+    text = f"{merchant or ''}\n{subject or ''}\n{body or ''}"
+    for category, pattern in CATEGORY_PATTERNS:
+        if pattern.search(text):
+            return category
+    return "otros"
+
+
 def execute_with_retry(request, max_retries: int = 6):
     """Ejecuta una request de la API de Gmail reintentando con backoff
     exponencial cuando se excede la cuota (403/429 rateLimitExceeded)."""
@@ -106,13 +160,15 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
         return None
     merchant_match = MERCHANT_RE.search(body)
     card_match = CARD_RE.search(body)
+    merchant = merchant_match.group(1).strip() if merchant_match else subject
     return {
         "id": msg_id,
         "date": datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc).isoformat(),
         "amount": float(amount_match.group(1).replace(",", "")),
-        "merchant": merchant_match.group(1).strip() if merchant_match else subject,
+        "merchant": merchant,
         "card_last4": card_match.group(1) if card_match else None,
         "type": detect_transaction_type(subject, body),
+        "category": detect_category(merchant, subject, body),
         "bank": BANK_NAME,
         "subject": subject,
     }
@@ -169,6 +225,12 @@ def main() -> None:
                 new_count += 1
             time.sleep(0.2)
         request = service.users().messages().list_next(request, response)
+
+    # Recategoriza todas las transacciones (no solo las nuevas) por si
+    # CATEGORY_PATTERNS cambió desde el último sync. Usa merchant/subject
+    # ya guardados, porque el cuerpo del correo no se persiste.
+    for expense in data["expenses"]:
+        expense["category"] = detect_category(expense.get("merchant", ""), expense.get("subject", ""))
 
     data["expenses"].sort(key=lambda e: e["date"], reverse=True)
     data["last_sync"] = datetime.now(timezone.utc).isoformat()

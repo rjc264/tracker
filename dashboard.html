@@ -119,6 +119,15 @@
   .badge.tarjeta_debito { background: #2ecc7133; color: #6bdb9d; }
   .badge.transferencia { background: #9b59b633; color: #c393d6; }
   .badge.desconocido { background: #8b93a733; color: #b3bacb; }
+  .badge.cat-salud { background: #e74c3c33; color: #f19c92; }
+  .badge.cat-alimentacion { background: #f1c40f33; color: #f5d76e; }
+  .badge.cat-transporte { background: #4a90e233; color: #7fb2ee; }
+  .badge.cat-entretenimiento { background: #9b59b633; color: #c393d6; }
+  .badge.cat-viajes { background: #1abc9c33; color: #6fe0ca; }
+  .badge.cat-servicios { background: #e67e2233; color: #f0a868; }
+  .badge.cat-vivienda { background: #34495e33; color: #93a6b8; }
+  .badge.cat-compras { background: #2ecc7133; color: #6bdb9d; }
+  .badge.cat-otros { background: #8b93a733; color: #b3bacb; }
   #emptyState { text-align: center; color: var(--text-dim); padding: 2rem 0; }
 </style>
 </head>
@@ -176,6 +185,21 @@
         <input type="date" id="fHasta" />
       </div>
       <div class="field">
+        <label for="fCategoria">Categoría</label>
+        <select id="fCategoria">
+          <option value="">Todas</option>
+          <option value="alimentacion">Alimentación</option>
+          <option value="transporte">Transporte</option>
+          <option value="entretenimiento">Entretenimiento</option>
+          <option value="viajes">Viajes</option>
+          <option value="salud">Salud</option>
+          <option value="servicios">Servicios</option>
+          <option value="vivienda">Vivienda</option>
+          <option value="compras">Compras</option>
+          <option value="otros">Otros</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="fTipo">Tipo</label>
         <select id="fTipo">
           <option value="">Todos</option>
@@ -209,8 +233,8 @@
         <strong id="avg">-</strong>
       </div>
       <div class="card sync">
-        <div class="label">Comercio con más gasto</div>
-        <strong id="topMerchant">-</strong>
+        <div class="label">Categoría con más gasto</div>
+        <strong id="topCategory">-</strong>
       </div>
     </div>
 
@@ -220,8 +244,8 @@
         <div class="chartBox"><canvas id="trendChart"></canvas></div>
       </div>
       <div class="panel">
-        <h2>Distribución por tipo de movimiento</h2>
-        <div class="chartBox"><canvas id="typeChart"></canvas></div>
+        <h2>Distribución de gastos por categoría</h2>
+        <div class="chartBox"><canvas id="categoryChart"></canvas></div>
       </div>
     </div>
 
@@ -234,7 +258,7 @@
       <h2>Transacciones</h2>
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tipo</th><th>Tarjeta</th></tr>
+          <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Categoría</th><th>Tipo</th><th>Tarjeta</th></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
@@ -259,6 +283,28 @@
     tarjeta_debito: '#2ecc71',
     transferencia: '#9b59b6',
     desconocido: '#8b93a7',
+  };
+  const categoryLabels = {
+    alimentacion: 'Alimentación',
+    transporte: 'Transporte',
+    entretenimiento: 'Entretenimiento',
+    viajes: 'Viajes',
+    salud: 'Salud',
+    servicios: 'Servicios',
+    vivienda: 'Vivienda',
+    compras: 'Compras',
+    otros: 'Otros',
+  };
+  const categoryColors = {
+    alimentacion: '#f1c40f',
+    transporte: '#4a90e2',
+    entretenimiento: '#9b59b6',
+    viajes: '#1abc9c',
+    salud: '#e74c3c',
+    servicios: '#e67e22',
+    vivienda: '#34495e',
+    compras: '#2ecc71',
+    otros: '#8b93a7',
   };
 
   let passphrase = null;
@@ -316,17 +362,19 @@
       desde: document.getElementById('fDesde').value,
       hasta: document.getElementById('fHasta').value,
       tipo: document.getElementById('fTipo').value,
+      categoria: document.getElementById('fCategoria').value,
       texto: document.getElementById('fTexto').value.trim().toLowerCase(),
     };
   }
 
   function applyFilters() {
-    const { desde, hasta, tipo, texto } = currentFilters();
+    const { desde, hasta, tipo, categoria, texto } = currentFilters();
     const filtered = allExpenses.filter(e => {
       const day = e.date.slice(0, 10);
       if (desde && day < desde) return false;
       if (hasta && day > hasta) return false;
       if (tipo && e.type !== tipo) return false;
+      if (categoria && (e.category || 'otros') !== categoria) return false;
       if (texto && !(e.merchant || '').toLowerCase().includes(texto)) return false;
       return true;
     });
@@ -347,27 +395,34 @@
       : '$0.00';
 
     const byMerchant = {};
+    const byCategory = {};
     for (const e of expenses) {
-      const key = e.merchant || 'Desconocido';
-      byMerchant[key] = (byMerchant[key] || 0) + e.amount;
+      const merchantKey = e.merchant || 'Desconocido';
+      byMerchant[merchantKey] = (byMerchant[merchantKey] || 0) + e.amount;
+      const catKey = e.category || 'otros';
+      byCategory[catKey] = (byCategory[catKey] || 0) + e.amount;
     }
-    const topMerchantEntry = Object.entries(byMerchant).sort((a, b) => b[1] - a[1])[0];
-    document.getElementById('topMerchant').textContent = topMerchantEntry
-      ? `${topMerchantEntry[0]} ($${topMerchantEntry[1].toFixed(2)})`
+    const topCategoryEntry = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
+    document.getElementById('topCategory').textContent = topCategoryEntry
+      ? `${categoryLabels[topCategoryEntry[0]] ?? topCategoryEntry[0]} ($${topCategoryEntry[1].toFixed(2)})`
       : '-';
 
     // Tabla
     const rows = document.getElementById('rows');
     const emptyState = document.getElementById('emptyState');
-    rows.innerHTML = expenses.map(e => `
+    rows.innerHTML = expenses.map(e => {
+      const cat = e.category || 'otros';
+      return `
       <tr>
         <td>${new Date(e.date).toLocaleDateString()}</td>
         <td>${e.merchant ?? ''}</td>
         <td>$${e.amount.toFixed(2)}</td>
+        <td><span class="badge cat-${cat}">${categoryLabels[cat] ?? cat}</span></td>
         <td><span class="badge ${e.type}">${typeLabels[e.type] ?? e.type ?? ''}</span></td>
         <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
     emptyState.hidden = expenses.length !== 0;
 
     // Tendencia diaria
@@ -402,18 +457,16 @@
       },
     });
 
-    // Distribución por tipo
-    const byType = {};
-    for (const e of expenses) byType[e.type] = (byType[e.type] || 0) + e.amount;
-    const typeKeys = Object.keys(byType);
-    destroyChart('type');
-    charts.type = new Chart(document.getElementById('typeChart'), {
+    // Distribución por categoría
+    const categoryKeys = Object.keys(byCategory);
+    destroyChart('category');
+    charts.category = new Chart(document.getElementById('categoryChart'), {
       type: 'doughnut',
       data: {
-        labels: typeKeys.map(t => typeLabels[t] ?? t),
+        labels: categoryKeys.map(c => categoryLabels[c] ?? c),
         datasets: [{
-          data: typeKeys.map(t => byType[t]),
-          backgroundColor: typeKeys.map(t => typeColors[t] ?? '#8b93a7'),
+          data: categoryKeys.map(c => byCategory[c]),
+          backgroundColor: categoryKeys.map(c => categoryColors[c] ?? '#8b93a7'),
           borderColor: '#171d29',
           borderWidth: 2,
         }],
@@ -592,13 +645,14 @@
     if (e.key === 'Enter') unlock();
   });
 
-  ['fDesde', 'fHasta', 'fTipo', 'fTexto'].forEach(id => {
+  ['fDesde', 'fHasta', 'fTipo', 'fCategoria', 'fTexto'].forEach(id => {
     document.getElementById(id).addEventListener('input', applyFilters);
   });
   document.getElementById('clearFilters').addEventListener('click', () => {
     document.getElementById('fDesde').value = '';
     document.getElementById('fHasta').value = '';
     document.getElementById('fTipo').value = '';
+    document.getElementById('fCategoria').value = '';
     document.getElementById('fTexto').value = '';
     applyFilters();
   });
