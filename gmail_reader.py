@@ -441,7 +441,10 @@ def main() -> None:
         after = (datetime.now(timezone.utc) - timedelta(days=SYNC_DAYS)).strftime("%Y/%m/%d")
 
     senders = [s.strip() for s in BANK_EMAIL.split(",") if s.strip()]
-    from_clause = " OR ".join(f"from:{s}" for s in senders)
+    # Comillas por si algún remitente trae caracteres especiales (ej. el de
+    # "AVISO DE CREDITO-DEBITO" usa "/" en el local-part: Informacion_ElSal
+    # vador_Banco/ElSalvador/Credomatic@sv.credomatic.com).
+    from_clause = " OR ".join(f'from:"{s}"' for s in senders)
     query = f"({from_clause}) after:{after}"
 
     if SYNC_UNTIL:
