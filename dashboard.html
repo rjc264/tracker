@@ -98,10 +98,10 @@
   }
   .card .label { font-size: 0.78rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem; }
   .card strong { display: block; font-size: 1.5rem; margin-top: 0.3rem; }
+  .card.income strong { color: var(--green); }
   .card.total strong { color: var(--red); }
+  .card.balance strong { color: var(--amber); }
   .card.count strong { color: var(--accent); }
-  .card.avg strong { color: var(--amber); }
-  .card.sync strong { color: var(--green); font-size: 1.05rem; }
 
   /* Charts row */
   .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
@@ -120,15 +120,21 @@
   .badge.tarjeta { background: #f1c40f33; color: #f5d76e; }
   .badge.transferencia { background: #9b59b633; color: #c393d6; }
   .badge.desconocido { background: #8b93a733; color: #b3bacb; }
-  .badge.cat-salud { background: #e74c3c33; color: #f19c92; }
   .badge.cat-alimentacion { background: #f1c40f33; color: #f5d76e; }
-  .badge.cat-transporte { background: #4a90e233; color: #7fb2ee; }
-  .badge.cat-entretenimiento { background: #9b59b633; color: #c393d6; }
-  .badge.cat-viajes { background: #1abc9c33; color: #6fe0ca; }
-  .badge.cat-servicios { background: #e67e2233; color: #f0a868; }
-  .badge.cat-vivienda { background: #34495e33; color: #93a6b8; }
+  .badge.cat-transporte { background: #3498db33; color: #85c1f2; }
   .badge.cat-compras { background: #2ecc7133; color: #6bdb9d; }
+  .badge.cat-salud { background: #e74c3c33; color: #f19c92; }
+  .badge.cat-cuidado_personal { background: #e8439333; color: #f291c4; }
+  .badge.cat-hogar_servicios { background: #e67e2233; color: #f0a868; }
+  .badge.cat-tecnologia_software { background: #16a08533; color: #6fd6c4; }
+  .badge.cat-viajes { background: #9b59b633; color: #c393d6; }
+  .badge.cat-entretenimiento { background: #6c5ce733; color: #ada2f0; }
+  .badge.cat-finanzas { background: #00cec933; color: #6ee8e2; }
+  .badge.cat-educacion { background: #55efc433; color: #a3f5dd; }
+  .badge.cat-gobierno { background: #636e7233; color: #a9b1b5; }
   .badge.cat-otros { background: #8b93a733; color: #b3bacb; }
+  .badge.dir-ingreso { background: #2ecc7133; color: #6bdb9d; }
+  .badge.dir-gasto { background: #8b93a733; color: #b3bacb; }
   #emptyState { text-align: center; color: var(--text-dim); padding: 2rem 0; }
 </style>
 </head>
@@ -186,17 +192,29 @@
         <input type="date" id="fHasta" />
       </div>
       <div class="field">
+        <label for="fMovimiento">Movimiento</label>
+        <select id="fMovimiento">
+          <option value="">Todos</option>
+          <option value="gasto">Gastos</option>
+          <option value="ingreso">Ingresos</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="fCategoria">Categoría</label>
         <select id="fCategoria">
           <option value="">Todas</option>
           <option value="alimentacion">Alimentación</option>
           <option value="transporte">Transporte</option>
-          <option value="entretenimiento">Entretenimiento</option>
-          <option value="viajes">Viajes</option>
-          <option value="salud">Salud</option>
-          <option value="servicios">Servicios</option>
-          <option value="vivienda">Vivienda</option>
           <option value="compras">Compras</option>
+          <option value="salud">Salud</option>
+          <option value="cuidado_personal">Cuidado personal</option>
+          <option value="hogar_servicios">Hogar y servicios</option>
+          <option value="tecnologia_software">Tecnología / Software</option>
+          <option value="viajes">Viajes</option>
+          <option value="entretenimiento">Entretenimiento</option>
+          <option value="finanzas">Finanzas</option>
+          <option value="educacion">Educación</option>
+          <option value="gobierno">Gobierno</option>
           <option value="otros">Otros</option>
         </select>
       </div>
@@ -222,21 +240,21 @@
     <p id="syncStatus"></p>
 
     <div class="summary">
+      <div class="card income">
+        <div class="label">Ingresos (rango filtrado)</div>
+        <strong id="totalIncome">-</strong>
+      </div>
       <div class="card total">
-        <div class="label">Total (rango filtrado)</div>
+        <div class="label">Gastos (rango filtrado)</div>
         <strong id="total">-</strong>
+      </div>
+      <div class="card balance">
+        <div class="label">Balance</div>
+        <strong id="balance">-</strong>
       </div>
       <div class="card count">
         <div class="label">Transacciones</div>
         <strong id="count">-</strong>
-      </div>
-      <div class="card avg">
-        <div class="label">Promedio por transacción</div>
-        <strong id="avg">-</strong>
-      </div>
-      <div class="card sync">
-        <div class="label">Categoría con más gasto</div>
-        <strong id="topCategory">-</strong>
       </div>
     </div>
 
@@ -260,7 +278,7 @@
       <h2>Transacciones</h2>
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Categoría</th><th>Tipo</th><th>Tarjeta</th></tr>
+          <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Movimiento</th><th>Categoría</th><th>Tipo</th><th>Tarjeta</th></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
@@ -291,25 +309,48 @@
   const categoryLabels = {
     alimentacion: 'Alimentación',
     transporte: 'Transporte',
-    entretenimiento: 'Entretenimiento',
-    viajes: 'Viajes',
-    salud: 'Salud',
-    servicios: 'Servicios',
-    vivienda: 'Vivienda',
     compras: 'Compras',
+    salud: 'Salud',
+    cuidado_personal: 'Cuidado personal',
+    hogar_servicios: 'Hogar y servicios',
+    tecnologia_software: 'Tecnología / Software',
+    viajes: 'Viajes',
+    entretenimiento: 'Entretenimiento',
+    finanzas: 'Finanzas',
+    educacion: 'Educación',
+    gobierno: 'Gobierno',
     otros: 'Otros',
   };
   const categoryColors = {
     alimentacion: '#f1c40f',
-    transporte: '#4a90e2',
-    entretenimiento: '#9b59b6',
-    viajes: '#1abc9c',
-    salud: '#e74c3c',
-    servicios: '#e67e22',
-    vivienda: '#34495e',
+    transporte: '#3498db',
     compras: '#2ecc71',
+    salud: '#e74c3c',
+    cuidado_personal: '#e84393',
+    hogar_servicios: '#e67e22',
+    tecnologia_software: '#16a085',
+    viajes: '#9b59b6',
+    entretenimiento: '#6c5ce7',
+    finanzas: '#00cec9',
+    educacion: '#55efc4',
+    gobierno: '#636e72',
     otros: '#8b93a7',
   };
+  const subcategoryLabels = {
+    supermercado: 'Supermercado', restaurantes: 'Restaurantes', comida_rapida: 'Comida rápida',
+    cafeterias: 'Cafeterías', panaderia: 'Panadería', delivery: 'Delivery', bares_gastrobares: 'Bares / Gastrobares',
+    combustible: 'Combustible', uber_taxi: 'Uber / Taxi', parqueos: 'Parqueos',
+    ropa: 'Ropa', hogar: 'Hogar', departamentales: 'Departamentales', tecnologia: 'Tecnología', marketplace: 'Marketplace',
+    farmacia: 'Farmacia', medico_clinicas: 'Médico / Clínicas', dental: 'Dental', optica: 'Óptica',
+    belleza: 'Belleza', cosmeticos: 'Cosméticos', flores_regalos: 'Flores / Regalos',
+    agua: 'Agua', electricidad: 'Electricidad', telefonia_movil: 'Telefonía móvil', internet: 'Internet',
+    saas: 'SaaS', hosting: 'Hosting', apps_software: 'Apps / Software',
+    hoteles: 'Hoteles', vuelos: 'Vuelos', transporte_internacional: 'Transporte internacional',
+    streaming: 'Streaming', eventos: 'Eventos', deportes: 'Deportes',
+    transferencias: 'Transferencias', comisiones: 'Comisiones', pagos_financieros: 'Pagos financieros',
+    educacion: 'Educación', gobierno: 'Gobierno', donaciones: 'Donaciones', sin_identificar: 'Sin identificar',
+  };
+  const directionLabels = { gasto: 'Gasto', ingreso: 'Ingreso' };
 
   let passphrase = null;
   let allExpenses = [];
@@ -367,18 +408,20 @@
       hasta: document.getElementById('fHasta').value,
       tipo: document.getElementById('fTipo').value,
       categoria: document.getElementById('fCategoria').value,
+      movimiento: document.getElementById('fMovimiento').value,
       texto: document.getElementById('fTexto').value.trim().toLowerCase(),
     };
   }
 
   function applyFilters() {
-    const { desde, hasta, tipo, categoria, texto } = currentFilters();
+    const { desde, hasta, tipo, categoria, movimiento, texto } = currentFilters();
     const filtered = allExpenses.filter(e => {
       const day = e.date.slice(0, 10);
       if (desde && day < desde) return false;
       if (hasta && day > hasta) return false;
       if (tipo && e.type !== tipo) return false;
       if (categoria && (e.category || 'otros') !== categoria) return false;
+      if (movimiento && (e.direction || 'gasto') !== movimiento) return false;
       if (texto && !(e.merchant || '').toLowerCase().includes(texto)) return false;
       return true;
     });
@@ -391,37 +434,44 @@
   }
 
   function render(expenses) {
-    const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-    document.getElementById('total').textContent = `$${total.toFixed(2)}`;
-    document.getElementById('count').textContent = expenses.length;
-    document.getElementById('avg').textContent = expenses.length
-      ? `$${(total / expenses.length).toFixed(2)}`
-      : '$0.00';
+    const gastos = expenses.filter(e => (e.direction || 'gasto') !== 'ingreso');
+    const ingresos = expenses.filter(e => e.direction === 'ingreso');
 
+    const totalGastos = gastos.reduce((sum, e) => sum + e.amount, 0);
+    const totalIngresos = ingresos.reduce((sum, e) => sum + e.amount, 0);
+    document.getElementById('total').textContent = `$${totalGastos.toFixed(2)}`;
+    document.getElementById('totalIncome').textContent = `$${totalIngresos.toFixed(2)}`;
+    document.getElementById('balance').textContent = `$${(totalIngresos - totalGastos).toFixed(2)}`;
+    document.getElementById('count').textContent = expenses.length;
+
+    // Categoría/comercio/tendencia se calculan solo sobre gastos: mezclar
+    // ingresos ahí distorsionaría el análisis de en qué se gasta el dinero.
     const byMerchant = {};
     const byCategory = {};
-    for (const e of expenses) {
+    for (const e of gastos) {
       const merchantKey = e.merchant || 'Desconocido';
       byMerchant[merchantKey] = (byMerchant[merchantKey] || 0) + e.amount;
       const catKey = e.category || 'otros';
       byCategory[catKey] = (byCategory[catKey] || 0) + e.amount;
     }
-    const topCategoryEntry = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
-    document.getElementById('topCategory').textContent = topCategoryEntry
-      ? `${categoryLabels[topCategoryEntry[0]] ?? topCategoryEntry[0]} ($${topCategoryEntry[1].toFixed(2)})`
-      : '-';
 
-    // Tabla
+    // Tabla (incluye ingresos y gastos, cada uno con su badge de movimiento)
     const rows = document.getElementById('rows');
     const emptyState = document.getElementById('emptyState');
     rows.innerHTML = expenses.map(e => {
       const cat = e.category || 'otros';
+      const subcat = e.subcategory;
+      const dir = e.direction === 'ingreso' ? 'ingreso' : 'gasto';
       return `
       <tr>
         <td>${new Date(e.date).toLocaleDateString()}</td>
         <td>${e.merchant ?? ''}</td>
         <td>$${e.amount.toFixed(2)}</td>
-        <td><span class="badge cat-${cat}">${categoryLabels[cat] ?? cat}</span></td>
+        <td><span class="badge dir-${dir}">${directionLabels[dir]}</span></td>
+        <td>
+          <span class="badge cat-${cat}">${categoryLabels[cat] ?? cat}</span>
+          ${subcat ? `<div style="font-size:0.72rem;color:var(--text-dim);margin-top:2px">${subcategoryLabels[subcat] ?? subcat}</div>` : ''}
+        </td>
         <td><span class="badge ${e.type}">${typeLabels[e.type] ?? e.type ?? ''}</span></td>
         <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
       </tr>
@@ -429,31 +479,47 @@
     }).join('');
     emptyState.hidden = expenses.length !== 0;
 
-    // Tendencia diaria
-    const byDay = {};
-    for (const e of expenses) {
+    // Tendencia diaria: gastos (rojo) vs ingresos (verde)
+    const byDayGasto = {};
+    const byDayIngreso = {};
+    for (const e of gastos) {
       const key = e.date.slice(0, 10);
-      byDay[key] = (byDay[key] || 0) + e.amount;
+      byDayGasto[key] = (byDayGasto[key] || 0) + e.amount;
     }
-    const dayLabels = Object.keys(byDay).sort();
+    for (const e of ingresos) {
+      const key = e.date.slice(0, 10);
+      byDayIngreso[key] = (byDayIngreso[key] || 0) + e.amount;
+    }
+    const dayLabels = Array.from(new Set([...Object.keys(byDayGasto), ...Object.keys(byDayIngreso)])).sort();
     destroyChart('trend');
     charts.trend = new Chart(document.getElementById('trendChart'), {
       type: 'line',
       data: {
         labels: dayLabels,
-        datasets: [{
-          label: 'Gasto diario ($)',
-          data: dayLabels.map(d => byDay[d]),
-          borderColor: '#4a90e2',
-          backgroundColor: '#4a90e233',
-          tension: 0.25,
-          fill: true,
-          pointRadius: 3,
-        }],
+        datasets: [
+          {
+            label: 'Gastos ($)',
+            data: dayLabels.map(d => byDayGasto[d] || 0),
+            borderColor: '#e74c3c',
+            backgroundColor: '#e74c3c33',
+            tension: 0.25,
+            fill: true,
+            pointRadius: 3,
+          },
+          {
+            label: 'Ingresos ($)',
+            data: dayLabels.map(d => byDayIngreso[d] || 0),
+            borderColor: '#2ecc71',
+            backgroundColor: '#2ecc7133',
+            tension: 0.25,
+            fill: true,
+            pointRadius: 3,
+          },
+        ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { position: 'bottom', labels: { color: '#e6e9f0', boxWidth: 12 } } },
         scales: {
           x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3344' } },
           y: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3344' } },
@@ -649,7 +715,7 @@
     if (e.key === 'Enter') unlock();
   });
 
-  ['fDesde', 'fHasta', 'fTipo', 'fCategoria', 'fTexto'].forEach(id => {
+  ['fDesde', 'fHasta', 'fTipo', 'fCategoria', 'fMovimiento', 'fTexto'].forEach(id => {
     document.getElementById(id).addEventListener('input', applyFilters);
   });
   document.getElementById('clearFilters').addEventListener('click', () => {
@@ -657,6 +723,7 @@
     document.getElementById('fHasta').value = '';
     document.getElementById('fTipo').value = '';
     document.getElementById('fCategoria').value = '';
+    document.getElementById('fMovimiento').value = '';
     document.getElementById('fTexto').value = '';
     applyFilters();
   });

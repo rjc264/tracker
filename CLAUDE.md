@@ -100,16 +100,40 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
 - Los regex de parseo (`AMOUNT_RE`, `MERCHANT_RE`, `CARD_RE`) son genéricos y
   puede que necesiten ajustarse al formato real de los correos de BAC
   Credomatic si el parseo falla o extrae mal los campos.
-- `detect_category` clasifica cada gasto (alimentacion/transporte/
-  entretenimiento/viajes/salud/servicios/vivienda/compras/otros) por palabras
-  clave sobre comercio+asunto+cuerpo (`CATEGORY_PATTERNS`, primera coincidencia
-  gana). Es heurístico, no viene del banco: ajusta las listas de palabras al
-  vocabulario real de tus comercios frecuentes. `main()` recalcula `category`
+- `detect_category` devuelve `(categoria, subcategoria)` según la taxonomía de
+  `Clasificacion_Comercios_El_Salvador.xlsx` (hoja "Taxonomía": 13 categorías
+  ascii — alimentacion/transporte/compras/salud/cuidado_personal/
+  hogar_servicios/tecnologia_software/viajes/entretenimiento/finanzas/
+  educacion/gobierno/otros — × 41 subcategorías; hoja "Reglas": normalizar
+  comercio quitando prefijos de procesador antes de clasificar, priorizar
+  marca conocida sobre heurística genérica). Ese .xlsx es solo la fuente que
+  se usó para escribir `CATEGORY_TAXONOMY`/`BRAND_RULES` a mano — el script no
+  lo lee en runtime, no hace falta que esté en el repo.
+  `BRAND_RULES` (marcas confirmadas de la hoja "Ejemplos", ej. Pizza Hut,
+  Uber, Selectos, Claude) se evalúa primero y también fija el nombre de
+  comercio normalizado (`brand_display_name`, quita prefijos de procesador
+  tipo `WOMPI*`/`DLOCAL*`/`DLC`/`PAYPAL*` — `normalize_merchant` hace lo mismo
+  como fallback). Si nada matchea, cae a `CATEGORY_TAXONOMY` (genérico por
+  palabra clave) y por último a `("otros", "sin_identificar")`. Es heurístico:
+  ajusta las listas de palabras/marcas al vocabulario real de tus comercios
+  si algo cae en "otros". `main()` recalcula `category`/`subcategory`/`type`
   para **todas** las transacciones (no solo las nuevas) en cada sync, usando
-  merchant/subject ya guardados (el cuerpo del correo no se persiste), así que
-  mejorar `CATEGORY_PATTERNS` reclasifica también el historial. El dashboard
-  usa las mismas claves de categoría en `categoryLabels`/`categoryColors`
-  (JS) — si agregas una categoría nueva en Python, agrégala también ahí.
+  merchant/subject ya guardados (el cuerpo del correo no se persiste). El
+  dashboard usa las mismas claves en `categoryLabels`/`categoryColors`/
+  `subcategoryLabels` (JS) — si agregas categoría/subcategoría nueva en
+  Python, agrégala también ahí.
+- `detect_direction` marca cada transacción como `"gasto"` o `"ingreso"`:
+  ingreso si el asunto dice "detalle de crédito" o el cuerpo dice "...ha
+  recibido un abono a su cuenta..." (son movimientos de abono/depósito, no
+  gasto real). **Aún no confirmado con un correo real de ese tipo** — a
+  diferencia del correo de compra (`TABLE_MERCHANT_AMOUNT_RE`), no se sabe si
+  el monto de un abono usa el mismo formato de tabla o uno distinto; si estas
+  notificaciones no aparecen en el dashboard, es porque `AMOUNT_RE` (fallback
+  genérico) no les extrae el monto — pide un correo real ("Mostrar original"
+  en Gmail) para escribirle un regex de tabla dedicado, igual que se hizo para
+  las compras. Como el cuerpo del correo no se persiste, la reclasificación de
+  `direction` en `main()` para transacciones ya sincronizadas solo puede usar
+  la señal del asunto, no la del cuerpo.
 
 ## Comandos útiles
 
