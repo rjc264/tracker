@@ -34,6 +34,7 @@ jobs:
           BANK_EMAIL: ${{ vars.BANK_EMAIL }}
           BANK: ${{ vars.BANK }}
           SYNC_DAYS: ${{ vars.SYNC_DAYS }}
+          DASHBOARD_PASSPHRASE: ${{ secrets.DASHBOARD_PASSPHRASE }}
         run: python gmail_reader.py
 
       - name: Eliminar credenciales temporales
@@ -44,6 +45,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/expenses.json
+          git add data/expenses.enc.json
           git diff --cached --quiet && echo "Sin cambios nuevos" || git commit -m "chore: sync expenses $(date -u +%Y-%m-%d)"
           git push

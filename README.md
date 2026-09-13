@@ -7,23 +7,27 @@ en GitHub Pages para consultar los gastos desde cualquier lugar.
 
 ## ⚠️ Aviso de seguridad
 
-Este repo es **privado**, pero **GitHub Pages publica el sitio con una URL
-pública** (cualquiera con el link puede verlo, aunque el repo sea privado),
-salvo que tengas GitHub Enterprise Cloud. Si prefieres que tus gastos no
-sean accesibles públicamente, evita el workflow `pages.yml` y consulta
-`data/expenses.json` directamente en el repo (`git pull`).
+Este repo es **público** (requisito de GitHub Pages en el plan gratuito), pero
+`data/expenses.enc.json` se guarda **cifrado con AES-GCM** (clave derivada por
+PBKDF2 desde una passphrase que solo tú conoces). Ni el repo, ni los Actions,
+ni GitHub Pages guardan la passphrase en texto plano — solo vive en un
+Secret de GitHub (usado para cifrar) y en tu cabeza (para descifrar en el
+navegador). Si la pierdes, los datos no son recuperables.
 
 ## 🏗️ Arquitectura
 
 ```
-Gmail API ──(diario, cron)──> gmail_reader.py ──> data/expenses.json ──> commit
-                                                          │
-                                                          └──> GitHub Pages (dashboard.html)
+Gmail API ──(diario, cron)──> gmail_reader.py ──cifra (AES-GCM)──> data/expenses.enc.json ──> commit
+                                                                            │
+                                                                            └──> GitHub Pages
+                                                                                   (dashboard.html pide
+                                                                                    la passphrase y
+                                                                                    descifra en el navegador)
 ```
 
 - `.github/workflows/sync.yml` — corre diario (`workflow_dispatch` también),
-  lee correos de `BANK_EMAIL`, actualiza `data/expenses.json` y hace commit.
-- `.github/workflows/pages.yml` — publica `dashboard.html` + `data/expenses.json`
+  lee correos de `BANK_EMAIL`, actualiza y vuelve a cifrar `data/expenses.enc.json`.
+- `.github/workflows/pages.yml` — publica `dashboard.html` + el JSON cifrado
   a GitHub Pages cada vez que cambian.
 
 ## 🚀 Configuración inicial
@@ -54,6 +58,8 @@ En `Settings → Secrets and variables → Actions`:
 **Secrets** (sensibles):
 - `GMAIL_CREDENTIALS_B64` — valor impreso por `generate_token.py`
 - `GMAIL_TOKEN_B64` — valor impreso por `generate_token.py`
+- `DASHBOARD_PASSPHRASE` — una contraseña fuerte que tú eliges (ej. generada
+  con `openssl rand -base64 24`). Úsala también al abrir el dashboard.
 
 **Variables** (opcionales, tienen defaults en el código):
 - `BANK_EMAIL` (default `notificaciones@bac.com.sv`)
@@ -64,6 +70,7 @@ Puedes hacerlo con `gh`:
 ```bash
 gh secret set GMAIL_CREDENTIALS_B64 < credentials_b64.txt
 gh secret set GMAIL_TOKEN_B64 < token_b64.txt
+gh secret set DASHBOARD_PASSPHRASE -b "tu-passphrase-fuerte"
 ```
 
 ### 4. Habilita GitHub Pages
@@ -85,7 +92,7 @@ Expenses` con "Run workflow", o localmente:
 
 ```bash
 pip install -r requirements.txt
-CONFIG_DIR=. python gmail_reader.py
+CONFIG_DIR=. DASHBOARD_PASSPHRASE="tu-passphrase-fuerte" python gmail_reader.py
 ```
 
 ## 📝 Ajustar el parser de correos

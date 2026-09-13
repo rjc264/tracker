@@ -14,40 +14,68 @@
   .card strong { display: block; font-size: 1.3rem; }
   table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
   th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8883; font-size: 0.9rem; }
-  #status { color: #888; font-size: 0.85rem; }
+  #gateError { color: #c0392b; font-size: 0.85rem; min-height: 1.2em; }
+  #gate { display: flex; gap: 0.5rem; align-items: center; margin-top: 2rem; }
+  #gate input { padding: 0.5rem; font-size: 1rem; }
+  #gate button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+  #app[hidden], #gate[hidden] { display: none; }
 </style>
 </head>
 <body>
   <h1>💰 BAC Expense Tracker</h1>
-  <p id="status">Cargando...</p>
 
-  <div class="summary">
-    <div class="card">Total<strong id="total">-</strong></div>
-    <div class="card">Transacciones<strong id="count">-</strong></div>
-    <div class="card">Última sincronización<strong id="lastSync">-</strong></div>
+  <div id="gate">
+    <label for="passphrase">Contraseña</label>
+    <input type="password" id="passphrase" autocomplete="current-password" />
+    <button id="unlock">Ver gastos</button>
+  </div>
+  <p id="gateError"></p>
+
+  <div id="app" hidden>
+    <div class="summary">
+      <div class="card">Total<strong id="total">-</strong></div>
+      <div class="card">Transacciones<strong id="count">-</strong></div>
+      <div class="card">Última sincronización<strong id="lastSync">-</strong></div>
+    </div>
+
+    <canvas id="monthlyChart" height="100"></canvas>
+
+    <table>
+      <thead>
+        <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tarjeta</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
   </div>
 
-  <canvas id="monthlyChart" height="100"></canvas>
-
-  <table>
-    <thead>
-      <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tarjeta</th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
-
   <script>
-    async function load() {
-      const status = document.getElementById('status');
-      try {
-        const res = await fetch('data/expenses.json', { cache: 'no-store' });
-        if (!res.ok) throw new Error('No se pudo cargar data/expenses.json');
-        const data = await res.json();
-        render(data);
-        status.textContent = '';
-      } catch (err) {
-        status.textContent = `Error: ${err.message}`;
-      }
+    // Los datos se sirven cifrados (AES-GCM + PBKDF2). La passphrase nunca
+    // se guarda en el repo: solo tú la conoces y se usa aquí, en tu navegador,
+    // para derivar la clave de descifrado. Si la olvidas, los datos no son recuperables.
+    function base64ToBytes(b64) {
+      return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    }
+
+    async function deriveKey(passphrase, saltB64, iterations) {
+      const salt = base64ToBytes(saltB64);
+      const baseKey = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        baseKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptEnvelope(envelope, passphrase) {
+      const key = await deriveKey(passphrase, envelope.salt, envelope.iterations);
+      const iv = base64ToBytes(envelope.iv);
+      const ciphertext = base64ToBytes(envelope.ciphertext);
+      const plaintextBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+      return JSON.parse(new TextDecoder().decode(plaintextBuf));
     }
 
     function render(data) {
@@ -87,7 +115,32 @@
       });
     }
 
-    load();
+    async function unlock() {
+      const gateError = document.getElementById('gateError');
+      const passphrase = document.getElementById('passphrase').value;
+      gateError.textContent = '';
+
+      if (!passphrase) return;
+
+      try {
+        const res = await fetch('data/expenses.enc.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudo cargar data/expenses.enc.json');
+        const envelope = await res.json();
+        if (!envelope.ciphertext) throw new Error('Aún no hay datos sincronizados.');
+
+        const data = await decryptEnvelope(envelope, passphrase);
+        document.getElementById('gate').hidden = true;
+        document.getElementById('app').hidden = false;
+        render(data);
+      } catch (err) {
+        gateError.textContent = 'Contraseña incorrecta o datos no disponibles.';
+      }
+    }
+
+    document.getElementById('unlock').addEventListener('click', unlock);
+    document.getElementById('passphrase').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') unlock();
+    });
   </script>
 </body>
 </html>

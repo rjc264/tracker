@@ -16,17 +16,20 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from crypto_utils import decrypt_json, encrypt_json
+
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "."))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "data"))
 CREDENTIALS_FILE = CONFIG_DIR / os.environ.get("CREDENTIALS_FILE_NAME", "credentials.json")
 TOKEN_FILE = CONFIG_DIR / os.environ.get("TOKEN_FILE_NAME", "token.json")
-EXPENSES_FILE = DATA_DIR / "expenses.json"
+EXPENSES_FILE = DATA_DIR / "expenses.enc.json"
 
 BANK_EMAIL = os.environ.get("BANK_EMAIL", "notificaciones@bac.com.sv")
 BANK_NAME = os.environ.get("BANK", "BAC")
 SYNC_DAYS = int(os.environ.get("SYNC_DAYS", "30"))
+DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
 
 # NOTA: ajusta estos patrones al formato real de los correos de tu banco.
 AMOUNT_RE = re.compile(r"(?:Monto|Amount)[:\s]*[A-Z]{0,3}\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
@@ -76,11 +79,16 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
 
 def load_existing() -> dict:
     if EXPENSES_FILE.exists():
-        return json.loads(EXPENSES_FILE.read_text(encoding="utf-8"))
+        envelope = json.loads(EXPENSES_FILE.read_text(encoding="utf-8"))
+        return decrypt_json(envelope, DASHBOARD_PASSPHRASE)
     return {"expenses": []}
 
 
 def main() -> None:
+    if not DASHBOARD_PASSPHRASE:
+        raise SystemExit(
+            "Falta la variable de entorno DASHBOARD_PASSPHRASE (guárdala como GitHub Secret)."
+        )
     creds = get_credentials()
     service = build("gmail", "v1", credentials=creds)
 
@@ -110,8 +118,9 @@ def main() -> None:
     data["expenses"].sort(key=lambda e: e["date"], reverse=True)
     data["last_sync"] = datetime.now(timezone.utc).isoformat()
 
+    envelope = encrypt_json(data, DASHBOARD_PASSPHRASE)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    EXPENSES_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    EXPENSES_FILE.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     print(f"✅ Sincronizado. {new_count} transacciones nuevas. Total: {len(data['expenses'])}")
 
 

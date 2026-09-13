@@ -5,7 +5,7 @@ on:
     branches: [master]
     paths:
       - "dashboard.html"
-      - "data/expenses.json"
+      - "data/expenses.enc.json"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +32,11 @@ jobs:
         run: |
           mkdir -p _site/data
           cp dashboard.html _site/index.html
-          cp data/expenses.json _site/data/expenses.json
+          if [ -f data/expenses.enc.json ]; then
+            cp data/expenses.enc.json _site/data/expenses.enc.json
+          else
+            echo '{}' > _site/data/expenses.enc.json
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
