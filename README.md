@@ -85,6 +85,21 @@ rm credentials.json token.json
 
 Ya no las necesitas en tu máquina; viven como Secrets en GitHub.
 
+## 📊 Dashboard interactivo
+
+El dashboard filtra en vivo (fecha, tipo, comercio) sobre los datos ya
+sincronizados, sin llamadas de red. El botón **"🔄 Buscar en Gmail"** además
+dispara un sync real acotado al rango de fechas elegido, llamando a la API de
+GitHub Actions directamente desde el navegador.
+
+Para usarlo necesitas pegar, en el panel "⚙️ Configuración de sincronización"
+del dashboard, un [Personal Access Token
+fine-grained](https://github.com/settings/tokens?type=beta) limitado a este
+repo con permisos **Actions: Read and write** y **Contents: Read**. El token
+solo se guarda en `sessionStorage` de esa pestaña (nunca en el repo) y se
+envía únicamente a `api.github.com`. Como el repo es público, no compartas
+ese token ni lo pegues en otro sitio.
+
 ## 🔧 Ejecutar manualmente
 
 Desde la pestaña **Actions** del repo, ejecuta el workflow `Sync Gmail

@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "0 13 * * *" # 07:00 America/El_Salvador (UTC-6)
   workflow_dispatch:
+    inputs:
+      since:
+        description: "Fecha inicial YYYY-MM-DD (opcional, sobreescribe SYNC_DAYS)"
+        required: false
+        type: string
+      until:
+        description: "Fecha final YYYY-MM-DD (opcional)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -35,6 +44,8 @@ jobs:
           BANK_EMAIL: ${{ vars.BANK_EMAIL }}
           BANK: ${{ vars.BANK }}
           SYNC_DAYS: ${{ vars.SYNC_DAYS }}
+          SYNC_SINCE: ${{ github.event.inputs.since }}
+          SYNC_UNTIL: ${{ github.event.inputs.until }}
           DASHBOARD_PASSPHRASE: ${{ secrets.DASHBOARD_PASSPHRASE }}
         run: python gmail_reader.py
 

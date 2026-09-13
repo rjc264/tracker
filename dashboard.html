@@ -6,148 +6,603 @@
 <title>BAC Expense Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.4rem; }
-  .summary { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.5rem 0; }
-  .card { border: 1px solid #8884; border-radius: 8px; padding: 1rem 1.5rem; }
-  .card strong { display: block; font-size: 1.3rem; }
-  table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
-  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8883; font-size: 0.9rem; }
-  #gateError { color: #c0392b; font-size: 0.85rem; min-height: 1.2em; }
-  #gate { display: flex; gap: 0.5rem; align-items: center; margin-top: 2rem; }
-  #gate input { padding: 0.5rem; font-size: 1rem; }
-  #gate button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-  #app[hidden], #gate[hidden] { display: none; }
+  :root {
+    color-scheme: dark;
+    --bg: #10141c;
+    --panel: #171d29;
+    --panel-2: #1e2634;
+    --border: #2a3344;
+    --text: #e6e9f0;
+    --text-dim: #8b93a7;
+    --accent: #4a90e2;
+    --green: #2ecc71;
+    --red: #e74c3c;
+    --amber: #f1c40f;
+    --purple: #9b59b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 1.5rem;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header.app-header {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem;
+  }
+  header.app-header h1 { font-size: 1.3rem; margin: 0; }
+  .pill {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 0.35rem 0.9rem; font-size: 0.8rem; color: var(--text-dim);
+  }
+
+  /* Gate */
+  #gate {
+    display: flex; gap: 0.5rem; align-items: center; margin-top: 4rem;
+    justify-content: center; flex-wrap: wrap;
+  }
+  #gate input {
+    padding: 0.6rem 0.8rem; font-size: 1rem; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  button {
+    padding: 0.55rem 1.1rem; font-size: 0.95rem; cursor: pointer;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); font-weight: 500;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  #gateError { color: var(--red); font-size: 0.85rem; text-align: center; min-height: 1.2em; }
+  [hidden] { display: none !important; }
+
+  /* Filter bar */
+  .filters {
+    display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem; margin-bottom: 1.25rem;
+  }
+  .field { display: flex; flex-direction: column; gap: 0.3rem; }
+  .field label { font-size: 0.75rem; color: var(--text-dim); }
+  .field input, .field select {
+    padding: 0.5rem 0.6rem; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); font-size: 0.9rem;
+  }
+  .field.grow { flex: 1; min-width: 160px; }
+  .filters .spacer { flex: 1; }
+
+  #syncStatus { font-size: 0.85rem; color: var(--text-dim); margin: -0.5rem 0 1rem; min-height: 1.2em; }
+  #syncStatus.error { color: var(--red); }
+  #syncStatus.ok { color: var(--green); }
+
+  details#syncConfig {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem;
+  }
+  details#syncConfig summary { cursor: pointer; color: var(--text-dim); }
+  #syncConfig .cfgGrid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem; margin-top: 0.75rem;
+  }
+  #syncConfig .hint { color: var(--text-dim); margin-top: 0.5rem; line-height: 1.4; }
+
+  /* Summary cards */
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem;
+  }
+  .card .label { font-size: 0.78rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem; }
+  .card strong { display: block; font-size: 1.5rem; margin-top: 0.3rem; }
+  .card.total strong { color: var(--red); }
+  .card.count strong { color: var(--accent); }
+  .card.avg strong { color: var(--amber); }
+  .card.sync strong { color: var(--green); font-size: 1.05rem; }
+
+  /* Charts row */
+  .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem; color: var(--text-dim); font-weight: 600; }
+  .chartBox { position: relative; height: 240px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  tbody tr:hover { background: var(--panel-2); }
+  .badge { padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; white-space: nowrap; }
+  .badge.tarjeta_credito { background: #4a90e233; color: #7fb2ee; }
+  .badge.tarjeta_debito { background: #2ecc7133; color: #6bdb9d; }
+  .badge.transferencia { background: #9b59b633; color: #c393d6; }
+  .badge.desconocido { background: #8b93a733; color: #b3bacb; }
+  #emptyState { text-align: center; color: var(--text-dim); padding: 2rem 0; }
 </style>
 </head>
 <body>
-  <h1>💰 BAC Expense Tracker</h1>
+<div class="wrap">
 
   <div id="gate">
-    <label for="passphrase">Contraseña</label>
-    <input type="password" id="passphrase" autocomplete="current-password" />
-    <button id="unlock">Ver gastos</button>
+    <input type="password" id="passphrase" placeholder="Contraseña" autocomplete="current-password" />
+    <button class="primary" id="unlock">Ver gastos</button>
   </div>
   <p id="gateError"></p>
 
   <div id="app" hidden>
+    <header class="app-header">
+      <h1>💰 BAC Expense Tracker</h1>
+      <span class="pill">Última sincronización: <span id="lastSync">-</span></span>
+    </header>
+
+    <details id="syncConfig">
+      <summary>⚙️ Configuración de sincronización con GitHub Actions</summary>
+      <div class="cfgGrid">
+        <div class="field">
+          <label for="cfgOwner">Owner</label>
+          <input type="text" id="cfgOwner" placeholder="rjc264" />
+        </div>
+        <div class="field">
+          <label for="cfgRepo">Repo</label>
+          <input type="text" id="cfgRepo" placeholder="tracker" />
+        </div>
+        <div class="field">
+          <label for="cfgBranch">Branch</label>
+          <input type="text" id="cfgBranch" placeholder="master" />
+        </div>
+        <div class="field">
+          <label for="cfgToken">GitHub Token (fine-grained)</label>
+          <input type="password" id="cfgToken" placeholder="github_pat_..." autocomplete="off" />
+        </div>
+      </div>
+      <p class="hint">
+        El token solo se guarda en <code>sessionStorage</code> de esta pestaña (se borra al
+        cerrarla) y solo se envía a <code>api.github.com</code> por HTTPS — nunca se comitea ni
+        se guarda en el repo. Usa un <strong>fine-grained token</strong> limitado a este repo con
+        permisos <em>Actions: Read and write</em> y <em>Contents: Read</em>. Como el repo es
+        público, no compartas este token ni lo pegues en otro lugar.
+      </p>
+    </details>
+
+    <div class="filters">
+      <div class="field">
+        <label for="fDesde">Desde</label>
+        <input type="date" id="fDesde" />
+      </div>
+      <div class="field">
+        <label for="fHasta">Hasta</label>
+        <input type="date" id="fHasta" />
+      </div>
+      <div class="field">
+        <label for="fTipo">Tipo</label>
+        <select id="fTipo">
+          <option value="">Todos</option>
+          <option value="tarjeta_credito">Tarjeta de crédito</option>
+          <option value="tarjeta_debito">Tarjeta de débito</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="desconocido">Desconocido</option>
+        </select>
+      </div>
+      <div class="field grow">
+        <label for="fTexto">Comercio</label>
+        <input type="text" id="fTexto" placeholder="Buscar comercio..." />
+      </div>
+      <div class="spacer"></div>
+      <button id="clearFilters">Limpiar filtros</button>
+      <button class="primary" id="buscarGmail">🔄 Buscar en Gmail</button>
+    </div>
+    <p id="syncStatus"></p>
+
     <div class="summary">
-      <div class="card">Total<strong id="total">-</strong></div>
-      <div class="card">Transacciones<strong id="count">-</strong></div>
-      <div class="card">Última sincronización<strong id="lastSync">-</strong></div>
+      <div class="card total">
+        <div class="label">Total (rango filtrado)</div>
+        <strong id="total">-</strong>
+      </div>
+      <div class="card count">
+        <div class="label">Transacciones</div>
+        <strong id="count">-</strong>
+      </div>
+      <div class="card avg">
+        <div class="label">Promedio por transacción</div>
+        <strong id="avg">-</strong>
+      </div>
+      <div class="card sync">
+        <div class="label">Comercio con más gasto</div>
+        <strong id="topMerchant">-</strong>
+      </div>
     </div>
 
-    <canvas id="monthlyChart" height="100"></canvas>
+    <div class="grid2">
+      <div class="panel">
+        <h2>Tendencia de gastos diarios</h2>
+        <div class="chartBox"><canvas id="trendChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Distribución por tipo de movimiento</h2>
+        <div class="chartBox"><canvas id="typeChart"></canvas></div>
+      </div>
+    </div>
 
-    <table>
-      <thead>
-        <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tipo</th><th>Tarjeta</th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div class="panel" style="margin-bottom:1.25rem;">
+      <h2>Top comercios</h2>
+      <div class="chartBox" style="height:200px;"><canvas id="merchantChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Transacciones</h2>
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Comercio</th><th>Monto</th><th>Tipo</th><th>Tarjeta</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" hidden>No hay transacciones para este filtro.</p>
+    </div>
   </div>
+</div>
 
-  <script>
-    // Los datos se sirven cifrados (AES-GCM + PBKDF2). La passphrase nunca
-    // se guarda en el repo: solo tú la conoces y se usa aquí, en tu navegador,
-    // para derivar la clave de descifrado. Si la olvidas, los datos no son recuperables.
-    function base64ToBytes(b64) {
-      return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+<script>
+  // Los datos se sirven cifrados (AES-GCM + PBKDF2). La passphrase nunca
+  // se guarda en el repo: solo tú la conoces y se usa aquí, en tu navegador,
+  // para derivar la clave de descifrado. Si la olvidas, los datos no son recuperables.
+
+  const typeLabels = {
+    tarjeta_credito: 'Tarjeta de crédito',
+    tarjeta_debito: 'Tarjeta de débito',
+    transferencia: 'Transferencia',
+    desconocido: 'Desconocido',
+  };
+  const typeColors = {
+    tarjeta_credito: '#4a90e2',
+    tarjeta_debito: '#2ecc71',
+    transferencia: '#9b59b6',
+    desconocido: '#8b93a7',
+  };
+
+  let passphrase = null;
+  let allExpenses = [];
+  let charts = {};
+
+  function base64ToBytes(b64) {
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  }
+
+  async function deriveKey(pass, saltB64, iterations) {
+    const salt = base64ToBytes(saltB64);
+    const baseKey = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+      baseKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+  }
+
+  async function decryptEnvelope(envelope, pass) {
+    const key = await deriveKey(pass, envelope.salt, envelope.iterations);
+    const iv = base64ToBytes(envelope.iv);
+    const ciphertext = base64ToBytes(envelope.ciphertext);
+    const plaintextBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return JSON.parse(new TextDecoder().decode(plaintextBuf));
+  }
+
+  // ---------- Config de sync (persistida solo en esta pestaña) ----------
+  function loadSyncConfig() {
+    document.getElementById('cfgOwner').value = sessionStorage.getItem('gh_owner') || 'rjc264';
+    document.getElementById('cfgRepo').value = sessionStorage.getItem('gh_repo') || 'tracker';
+    document.getElementById('cfgBranch').value = sessionStorage.getItem('gh_branch') || 'master';
+    document.getElementById('cfgToken').value = sessionStorage.getItem('gh_token') || '';
+  }
+  function getSyncConfig() {
+    const owner = document.getElementById('cfgOwner').value.trim();
+    const repo = document.getElementById('cfgRepo').value.trim();
+    const branch = document.getElementById('cfgBranch').value.trim() || 'master';
+    const token = document.getElementById('cfgToken').value.trim();
+    sessionStorage.setItem('gh_owner', owner);
+    sessionStorage.setItem('gh_repo', repo);
+    sessionStorage.setItem('gh_branch', branch);
+    sessionStorage.setItem('gh_token', token);
+    return { owner, repo, branch, token };
+  }
+
+  // ---------- Filtros ----------
+  function currentFilters() {
+    return {
+      desde: document.getElementById('fDesde').value,
+      hasta: document.getElementById('fHasta').value,
+      tipo: document.getElementById('fTipo').value,
+      texto: document.getElementById('fTexto').value.trim().toLowerCase(),
+    };
+  }
+
+  function applyFilters() {
+    const { desde, hasta, tipo, texto } = currentFilters();
+    const filtered = allExpenses.filter(e => {
+      const day = e.date.slice(0, 10);
+      if (desde && day < desde) return false;
+      if (hasta && day > hasta) return false;
+      if (tipo && e.type !== tipo) return false;
+      if (texto && !(e.merchant || '').toLowerCase().includes(texto)) return false;
+      return true;
+    });
+    render(filtered);
+  }
+
+  // ---------- Render ----------
+  function destroyChart(id) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  }
+
+  function render(expenses) {
+    const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+    document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+    document.getElementById('count').textContent = expenses.length;
+    document.getElementById('avg').textContent = expenses.length
+      ? `$${(total / expenses.length).toFixed(2)}`
+      : '$0.00';
+
+    const byMerchant = {};
+    for (const e of expenses) {
+      const key = e.merchant || 'Desconocido';
+      byMerchant[key] = (byMerchant[key] || 0) + e.amount;
+    }
+    const topMerchantEntry = Object.entries(byMerchant).sort((a, b) => b[1] - a[1])[0];
+    document.getElementById('topMerchant').textContent = topMerchantEntry
+      ? `${topMerchantEntry[0]} ($${topMerchantEntry[1].toFixed(2)})`
+      : '-';
+
+    // Tabla
+    const rows = document.getElementById('rows');
+    const emptyState = document.getElementById('emptyState');
+    rows.innerHTML = expenses.map(e => `
+      <tr>
+        <td>${new Date(e.date).toLocaleDateString()}</td>
+        <td>${e.merchant ?? ''}</td>
+        <td>$${e.amount.toFixed(2)}</td>
+        <td><span class="badge ${e.type}">${typeLabels[e.type] ?? e.type ?? ''}</span></td>
+        <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
+      </tr>
+    `).join('');
+    emptyState.hidden = expenses.length !== 0;
+
+    // Tendencia diaria
+    const byDay = {};
+    for (const e of expenses) {
+      const key = e.date.slice(0, 10);
+      byDay[key] = (byDay[key] || 0) + e.amount;
+    }
+    const dayLabels = Object.keys(byDay).sort();
+    destroyChart('trend');
+    charts.trend = new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: dayLabels,
+        datasets: [{
+          label: 'Gasto diario ($)',
+          data: dayLabels.map(d => byDay[d]),
+          borderColor: '#4a90e2',
+          backgroundColor: '#4a90e233',
+          tension: 0.25,
+          fill: true,
+          pointRadius: 3,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3344' } },
+          y: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3344' } },
+        },
+      },
+    });
+
+    // Distribución por tipo
+    const byType = {};
+    for (const e of expenses) byType[e.type] = (byType[e.type] || 0) + e.amount;
+    const typeKeys = Object.keys(byType);
+    destroyChart('type');
+    charts.type = new Chart(document.getElementById('typeChart'), {
+      type: 'doughnut',
+      data: {
+        labels: typeKeys.map(t => typeLabels[t] ?? t),
+        datasets: [{
+          data: typeKeys.map(t => byType[t]),
+          backgroundColor: typeKeys.map(t => typeColors[t] ?? '#8b93a7'),
+          borderColor: '#171d29',
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: '#e6e9f0', boxWidth: 12 } } },
+      },
+    });
+
+    // Top comercios
+    const topMerchants = Object.entries(byMerchant).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    destroyChart('merchant');
+    charts.merchant = new Chart(document.getElementById('merchantChart'), {
+      type: 'bar',
+      data: {
+        labels: topMerchants.map(([m]) => m),
+        datasets: [{
+          label: 'Gasto ($)',
+          data: topMerchants.map(([, v]) => v),
+          backgroundColor: '#f1c40f',
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3344' } },
+          y: { ticks: { color: '#8b93a7' }, grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  function setSyncStatus(msg, kind) {
+    const el = document.getElementById('syncStatus');
+    el.textContent = msg || '';
+    el.className = kind || '';
+  }
+
+  // ---------- Sync real vía GitHub Actions ----------
+  async function dispatchWorkflow({ owner, repo, branch, token }, since, until) {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/sync.yml/dispatches`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: branch, inputs: { since: since || '', until: until || '' } }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).message; } catch (_) {}
+      throw new Error(`No se pudo disparar el sync (HTTP ${res.status}). ${detail || ''}`);
+    }
+  }
+
+  async function findLatestRun({ owner, repo, token }, sinceIso) {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/workflows/sync.yml/runs?event=workflow_dispatch&per_page=5`,
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' } }
+    );
+    if (!res.ok) throw new Error('No se pudo consultar el estado del workflow.');
+    const data = await res.json();
+    const runs = (data.workflow_runs || []).filter(r => new Date(r.created_at) >= new Date(sinceIso));
+    runs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return runs[0] || null;
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function waitForRun(cfg, dispatchedAtIso) {
+    const deadline = Date.now() + 6 * 60 * 1000;
+    await sleep(2500);
+    let run = null;
+    while (Date.now() < deadline) {
+      if (!run) {
+        run = await findLatestRun(cfg, dispatchedAtIso);
+        if (!run) { setSyncStatus('Esperando que el workflow aparezca en GitHub Actions...'); await sleep(3000); continue; }
+      }
+      const res = await fetch(run.url, {
+        headers: { 'Authorization': `Bearer ${cfg.token}`, 'Accept': 'application/vnd.github+json' },
+      });
+      run = await res.json();
+      setSyncStatus(`Sincronizando con Gmail… estado: ${run.status}${run.status === 'completed' ? ' (' + run.conclusion + ')' : ''}`);
+      if (run.status === 'completed') return run;
+      await sleep(4000);
+    }
+    throw new Error('Tiempo de espera agotado esperando el workflow de sync.');
+  }
+
+  async function fetchFreshData(cfg) {
+    const res = await fetch(
+      `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data/expenses.enc.json?ref=${cfg.branch}&_=${Date.now()}`,
+      { headers: { 'Authorization': `Bearer ${cfg.token}`, 'Accept': 'application/vnd.github+json' }, cache: 'no-store' }
+    );
+    if (!res.ok) throw new Error('No se pudo leer data/expenses.enc.json actualizado.');
+    const json = await res.json();
+    const binary = atob(json.content.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    const text = new TextDecoder('utf-8').decode(bytes);
+    const envelope = JSON.parse(text);
+    return decryptEnvelope(envelope, passphrase);
+  }
+
+  async function buscarEnGmail() {
+    const btn = document.getElementById('buscarGmail');
+    const cfg = getSyncConfig();
+    const { desde, hasta } = currentFilters();
+
+    if (!cfg.owner || !cfg.repo || !cfg.token) {
+      setSyncStatus('Completa owner, repo y token en "Configuración de sincronización".', 'error');
+      document.getElementById('syncConfig').open = true;
+      return;
     }
 
-    async function deriveKey(passphrase, saltB64, iterations) {
-      const salt = base64ToBytes(saltB64);
-      const baseKey = await crypto.subtle.importKey(
-        'raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']
-      );
-      return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
-        baseKey,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      );
+    btn.disabled = true;
+    try {
+      setSyncStatus('Disparando sync en GitHub Actions...');
+      const dispatchedAt = new Date().toISOString();
+      await dispatchWorkflow(cfg, desde, hasta);
+      const run = await waitForRun(cfg, dispatchedAt);
+      if (run.conclusion !== 'success') {
+        throw new Error(`El workflow terminó con conclusión "${run.conclusion}". Revisa el log: ${run.html_url}`);
+      }
+      setSyncStatus('Sync completado, actualizando datos...');
+      const data = await fetchFreshData(cfg);
+      allExpenses = data.expenses || [];
+      document.getElementById('lastSync').textContent = data.last_sync
+        ? new Date(data.last_sync).toLocaleString()
+        : 'N/A';
+      applyFilters();
+      setSyncStatus('✅ Datos actualizados desde Gmail.', 'ok');
+    } catch (err) {
+      setSyncStatus(`❌ ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
     }
+  }
 
-    async function decryptEnvelope(envelope, passphrase) {
-      const key = await deriveKey(passphrase, envelope.salt, envelope.iterations);
-      const iv = base64ToBytes(envelope.iv);
-      const ciphertext = base64ToBytes(envelope.ciphertext);
-      const plaintextBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
-      return JSON.parse(new TextDecoder().decode(plaintextBuf));
-    }
+  // ---------- Gate ----------
+  async function unlock() {
+    const gateError = document.getElementById('gateError');
+    const pass = document.getElementById('passphrase').value;
+    gateError.textContent = '';
+    if (!pass) return;
 
-    function render(data) {
-      const expenses = data.expenses || [];
-      const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+    try {
+      const res = await fetch('data/expenses.enc.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo cargar data/expenses.enc.json');
+      const envelope = await res.json();
+      if (!envelope.ciphertext) throw new Error('Aún no hay datos sincronizados.');
 
-      document.getElementById('total').textContent = `$${total.toFixed(2)}`;
-      document.getElementById('count').textContent = expenses.length;
+      const data = await decryptEnvelope(envelope, pass);
+      passphrase = pass;
+      allExpenses = data.expenses || [];
       document.getElementById('lastSync').textContent = data.last_sync
         ? new Date(data.last_sync).toLocaleString()
         : 'N/A';
 
-      const rows = document.getElementById('rows');
-      const typeLabels = {
-        tarjeta_credito: 'Tarjeta de crédito',
-        tarjeta_debito: 'Tarjeta de débito',
-        transferencia: 'Transferencia',
-        desconocido: 'Desconocido',
-      };
-      rows.innerHTML = expenses.map(e => `
-        <tr>
-          <td>${new Date(e.date).toLocaleDateString()}</td>
-          <td>${e.merchant ?? ''}</td>
-          <td>$${e.amount.toFixed(2)}</td>
-          <td>${typeLabels[e.type] ?? e.type ?? ''}</td>
-          <td>${e.card_last4 ? '•••• ' + e.card_last4 : ''}</td>
-        </tr>
-      `).join('');
-
-      const byMonth = {};
-      for (const e of expenses) {
-        const key = e.date.slice(0, 7);
-        byMonth[key] = (byMonth[key] || 0) + e.amount;
-      }
-      const labels = Object.keys(byMonth).sort();
-
-      new Chart(document.getElementById('monthlyChart'), {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{ label: 'Gasto mensual ($)', data: labels.map(l => byMonth[l]), backgroundColor: '#4a90e2' }]
-        },
-        options: { responsive: true }
-      });
+      document.getElementById('gate').hidden = true;
+      document.getElementById('app').hidden = false;
+      loadSyncConfig();
+      applyFilters();
+    } catch (err) {
+      gateError.textContent = 'Contraseña incorrecta o datos no disponibles.';
     }
+  }
 
-    async function unlock() {
-      const gateError = document.getElementById('gateError');
-      const passphrase = document.getElementById('passphrase').value;
-      gateError.textContent = '';
+  document.getElementById('unlock').addEventListener('click', unlock);
+  document.getElementById('passphrase').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') unlock();
+  });
 
-      if (!passphrase) return;
-
-      try {
-        const res = await fetch('data/expenses.enc.json', { cache: 'no-store' });
-        if (!res.ok) throw new Error('No se pudo cargar data/expenses.enc.json');
-        const envelope = await res.json();
-        if (!envelope.ciphertext) throw new Error('Aún no hay datos sincronizados.');
-
-        const data = await decryptEnvelope(envelope, passphrase);
-        document.getElementById('gate').hidden = true;
-        document.getElementById('app').hidden = false;
-        render(data);
-      } catch (err) {
-        gateError.textContent = 'Contraseña incorrecta o datos no disponibles.';
-      }
-    }
-
-    document.getElementById('unlock').addEventListener('click', unlock);
-    document.getElementById('passphrase').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') unlock();
-    });
-  </script>
+  ['fDesde', 'fHasta', 'fTipo', 'fTexto'].forEach(id => {
+    document.getElementById(id).addEventListener('input', applyFilters);
+  });
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    document.getElementById('fDesde').value = '';
+    document.getElementById('fHasta').value = '';
+    document.getElementById('fTipo').value = '';
+    document.getElementById('fTexto').value = '';
+    applyFilters();
+  });
+  document.getElementById('buscarGmail').addEventListener('click', buscarEnGmail);
+</script>
 </body>
 </html>

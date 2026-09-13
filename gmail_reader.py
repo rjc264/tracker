@@ -32,6 +32,10 @@ BANK_EMAIL = os.environ.get("BANK_EMAIL") or "notificaciones_bac@baccredomatic.s
 BANK_NAME = os.environ.get("BANK") or "BAC"
 SYNC_DAYS = int(os.environ.get("SYNC_DAYS") or "30")
 DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
+# Rango explícito (YYYY-MM-DD) para syncs bajo demanda desde el dashboard.
+# Si no se definen, se usa la ventana de SYNC_DAYS hacia atrás desde hoy.
+SYNC_SINCE = os.environ.get("SYNC_SINCE") or None
+SYNC_UNTIL = os.environ.get("SYNC_UNTIL") or None
 
 # NOTA: ajusta estos patrones al formato real de los correos de tu banco.
 AMOUNT_RE = re.compile(r"(?:Monto|Amount)[:\s]*[A-Z]{0,3}\s*\$?\s*([\d,]+\.\d{2})", re.IGNORECASE)
@@ -129,10 +133,19 @@ def main() -> None:
     creds = get_credentials()
     service = build("gmail", "v1", credentials=creds)
 
-    after = (datetime.now(timezone.utc) - timedelta(days=SYNC_DAYS)).strftime("%Y/%m/%d")
+    if SYNC_SINCE:
+        after = datetime.strptime(SYNC_SINCE, "%Y-%m-%d").strftime("%Y/%m/%d")
+    else:
+        after = (datetime.now(timezone.utc) - timedelta(days=SYNC_DAYS)).strftime("%Y/%m/%d")
+
     senders = [s.strip() for s in BANK_EMAIL.split(",") if s.strip()]
     from_clause = " OR ".join(f"from:{s}" for s in senders)
     query = f"({from_clause}) after:{after}"
+
+    if SYNC_UNTIL:
+        # Gmail excluye el día de "before:", se suma 1 día para incluir SYNC_UNTIL completo.
+        before = (datetime.strptime(SYNC_UNTIL, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y/%m/%d")
+        query += f" before:{before}"
 
     data = load_existing()
     known_ids = {e["id"] for e in data["expenses"]}

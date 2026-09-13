@@ -30,11 +30,23 @@ Gmail API ──(cron diario)──> gmail_reader.py ──cifra (AES-GCM)──
 - **`dashboard.html`**: página estática publicada en GitHub Pages. Pide la
   passphrase, deriva la clave con Web Crypto (`crypto.subtle`) y descifra
   `data/expenses.enc.json` en el navegador. Nunca hay backend ni login real:
-  la "seguridad" es que sin la passphrase correcta el JSON es inútil.
+  la "seguridad" es que sin la passphrase correcta el JSON es inútil. Incluye
+  filtros dinámicos (fecha, tipo, comercio) que operan 100% en memoria sobre
+  los datos ya descifrados. El botón "Buscar en Gmail" dispara un sync real:
+  llama a la API de GitHub Actions (`workflow_dispatch` de `sync.yml`) con
+  `since`/`until` desde el navegador usando un **Personal Access Token
+  fine-grained** que el usuario pega en la sesión (guardado solo en
+  `sessionStorage`, nunca persistido ni comiteado); luego hace polling del run
+  vía la API de Actions y, al terminar, relee `data/expenses.enc.json` con la
+  API de Contents (no espera a `pages.yml`). Como el repo es público, pedir
+  este token en el cliente es un trade-off de seguridad consciente: el token
+  vive solo en memoria del navegador de esa pestaña.
 - **`.github/workflows/sync.yml`**: corre a diario (cron `0 13 * * *` =
-  07:00 El Salvador) y por `workflow_dispatch`. Escribe credenciales desde
-  Secrets, corre `gmail_reader.py`, commitea `data/expenses.enc.json` si
-  cambió, y dispara `pages.yml` manualmente (un push con `GITHUB_TOKEN` no
+  07:00 El Salvador) y por `workflow_dispatch` (acepta inputs opcionales
+  `since`/`until`, `YYYY-MM-DD`, usados por el botón "Buscar en Gmail" del
+  dashboard para acotar el sync a un rango de fechas). Escribe credenciales
+  desde Secrets, corre `gmail_reader.py`, commitea `data/expenses.enc.json`
+  si cambió, y dispara `pages.yml` manualmente (un push con `GITHUB_TOKEN` no
   dispara otros workflows automáticamente).
 - **`.github/workflows/pages.yml`**: push-triggered (paths: `dashboard.html`,
   `data/expenses.enc.json`) + `workflow_dispatch`. Publica `dashboard.html`
@@ -54,7 +66,13 @@ Variables:
 - `BANK_EMAIL` — remitentes reales separados por coma:
   `notificaciones_bac@baccredomatic.sv,info@baccredomatic.com`
 - `BANK` = `BAC`
-- `SYNC_DAYS` = `30`
+- `SYNC_DAYS` = `30` (default cuando el dispatch no manda `since`)
+
+No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
+- `SYNC_SINCE` / `SYNC_UNTIL` — rango explícito (`YYYY-MM-DD`), sobreescriben
+  `SYNC_DAYS`. Los manda `sync.yml` desde `github.event.inputs.since/until`
+  cuando el dashboard dispara el workflow manualmente; vacíos en el cron
+  diario.
 
 ## Convenciones importantes
 
