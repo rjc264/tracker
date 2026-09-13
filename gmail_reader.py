@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -15,6 +16,7 @@ from typing import Optional
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from crypto_utils import decrypt_json, encrypt_json
 
@@ -53,6 +55,22 @@ def detect_transaction_type(subject: str, body: str) -> str:
     if TRANSFER_RE.search(text):
         return "transferencia"
     return "desconocido"
+
+
+def execute_with_retry(request, max_retries: int = 6):
+    """Ejecuta una request de la API de Gmail reintentando con backoff
+    exponencial cuando se excede la cuota (403/429 rateLimitExceeded)."""
+    for attempt in range(max_retries):
+        try:
+            return request.execute()
+        except HttpError as exc:
+            status = exc.resp.status if exc.resp is not None else None
+            is_rate_limit = status in (403, 429) and "rateLimitExceeded" in str(exc)
+            if not is_rate_limit or attempt == max_retries - 1:
+                raise
+            wait = min(2 ** attempt, 60)
+            print(f"⚠️  Límite de cuota de Gmail alcanzado, reintentando en {wait}s...")
+            time.sleep(wait)
 
 
 def get_credentials() -> Credentials:
@@ -122,11 +140,13 @@ def main() -> None:
 
     request = service.users().messages().list(userId="me", q=query)
     while request is not None:
-        response = request.execute()
+        response = execute_with_retry(request)
         for msg_ref in response.get("messages", []):
             if msg_ref["id"] in known_ids:
                 continue
-            msg = service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
+            msg = execute_with_retry(
+                service.users().messages().get(userId="me", id=msg_ref["id"], format="full")
+            )
             headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
             body = extract_text(msg["payload"])
             transaction = parse_transaction(headers.get("Subject", ""), body, msg_ref["id"], msg["internalDate"])
@@ -134,6 +154,7 @@ def main() -> None:
                 data["expenses"].append(transaction)
                 known_ids.add(msg_ref["id"])
                 new_count += 1
+            time.sleep(0.2)
         request = service.users().messages().list_next(request, response)
 
     data["expenses"].sort(key=lambda e: e["date"], reverse=True)
