@@ -420,6 +420,14 @@
   }
 
   // ---------- Filtros ----------
+  // e.date viene en UTC (ISO). El Salvador es UTC-6: una compra a las 8 p.m.
+  // queda como el día siguiente en UTC, así que filtros y agrupación por día
+  // usan la fecha local del navegador, igual que la tabla (toLocaleDateString).
+  function localDay(iso) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function currentFilters() {
     return {
       desde: document.getElementById('fDesde').value,
@@ -434,7 +442,7 @@
   function applyFilters() {
     const { desde, hasta, tipo, categoria, movimiento, texto } = currentFilters();
     const filtered = allExpenses.filter(e => {
-      const day = e.date.slice(0, 10);
+      const day = localDay(e.date);
       if (desde && day < desde) return false;
       if (hasta && day > hasta) return false;
       if (tipo && e.type !== tipo) return false;
@@ -513,11 +521,11 @@
     const byDayGasto = {};
     const byDayIngreso = {};
     for (const e of gastos) {
-      const key = e.date.slice(0, 10);
+      const key = localDay(e.date);
       byDayGasto[key] = (byDayGasto[key] || 0) + e.amount;
     }
     for (const e of ingresos) {
-      const key = e.date.slice(0, 10);
+      const key = localDay(e.date);
       byDayIngreso[key] = (byDayIngreso[key] || 0) + e.amount;
     }
     const dayLabels = Array.from(new Set([...Object.keys(byDayGasto), ...Object.keys(byDayIngreso)])).sort();
