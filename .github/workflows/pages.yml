@@ -5,6 +5,8 @@ on:
     branches: [master]
     paths:
       - "dashboard.html"
+      - "privacy.html"
+      - "terms.html"
       - "data/expenses.enc.json"
   workflow_dispatch:
 
@@ -32,6 +34,7 @@ jobs:
         run: |
           mkdir -p _site/data
           cp dashboard.html _site/index.html
+          cp privacy.html terms.html _site/
           if [ -f data/expenses.enc.json ]; then
             cp data/expenses.enc.json _site/data/expenses.enc.json
           else
