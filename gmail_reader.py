@@ -229,7 +229,7 @@ BRAND_RULES = [
     # (heladería) dentro del local "Art Haus", no el local en sí.
     (r"llao\s*llao", "Llao Llao", "alimentacion", "postres_helados"),
     (r"\bart\s+haus\b", "Art Haus", "entretenimiento", "cine_cultura"),
-    (r"gran\s+via\s+paystat", "La Gran Vía (parqueo)", "otros", "servicios_estacionamiento"),
+    (r"gran\s+via\s+paystat", "La Gran Vía (parqueo)", "transporte", "parqueos"),
     (r"beto.?s\s+market", "Beto's Market", "alimentacion", "supermercado"),
     (r"centros\s+penales", "Centros Penales", "gobierno", "gobierno"),
     (r"chamos\s+led", "Chamos LED", "compras", "hogar"),
@@ -303,6 +303,10 @@ BRAND_RULES = [
     (r"\bairbnb\b", "Airbnb", "viajes", "hoteles"),
     (r"name-?cheap", "Namecheap", "tecnologia_software", "hosting"),
     (r"\bgithub\b", "GitHub", "tecnologia_software", "saas"),
+    (r"\btucson\b", "Tucson", "alimentacion", "restaurantes"),
+    (r"herradura\s+merliot", "La Herradura", "alimentacion", "restaurantes"),
+    # Office Depot aparece como "OD El salvador suc. ..." en el descriptor.
+    (r"office\s+depot|\bOD\s+el\s+salvador", "Office Depot", "hogar_servicios", "suministros_oficina"),
 ]
 BRAND_RULES = [
     (re.compile(pattern, re.IGNORECASE), name, category, subcategory)
