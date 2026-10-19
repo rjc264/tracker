@@ -37,6 +37,11 @@ DASHBOARD_PASSPHRASE = os.environ.get("DASHBOARD_PASSPHRASE")
 # Si no se definen, se usa la ventana de SYNC_DAYS hacia atrás desde hoy.
 SYNC_SINCE = os.environ.get("SYNC_SINCE") or None
 SYNC_UNTIL = os.environ.get("SYNC_UNTIL") or None
+# REPARSE=true vuelve a descargar y parsear también los correos ya
+# sincronizados dentro del rango (reemplaza la transacción guardada). Sirve
+# para corregir el nombre de comercio cuando cambia el parseo, porque la
+# reclasificación normal no tiene el cuerpo del correo.
+REPARSE = (os.environ.get("REPARSE") or "").lower() in ("1", "true", "yes")
 
 # Formato real confirmado del correo "Alerta PRF BAC Credomatic" (texto plano,
 # linealizado desde una tabla HTML): las etiquetas aparecen antes que sus
@@ -167,8 +172,9 @@ def detect_transaction_type(subject: str, body: str, card_last4: Optional[str] =
 # Puede haber más de uno encadenado (ej. "DLOCAL* DLC TEMU"). N1CO aparece
 # como "Procesador / canal" en Clasificacion...ACTUALIZADO_JULIO2026.xlsx
 # (hoja "Comercios SV", fila VIDRI) igual que WOMPI/DLOCAL, de ahí que
-# "N1CO*LA CLASICA CH" se trate igual (se limpia a "LA CLASICA CH").
-_PROCESSOR_PREFIX_RE = re.compile(r"^\s*(WOMPI|DLOCAL|DLC|PAYPAL|N1CO)[\*\s]+", re.IGNORECASE)
+# "N1CO*LA CLASICA CH" se trate igual (se limpia a "LA CLASICA CH"). BIZZ*
+# visto en "BIZZ*LA BODEGA BEER".
+_PROCESSOR_PREFIX_RE = re.compile(r"^\s*(WOMPI|DLOCAL|DLC|PAYPAL|N1CO|BIZZ)[\*\s]+", re.IGNORECASE)
 
 
 def normalize_merchant(raw: str) -> str:
@@ -216,7 +222,7 @@ BRAND_RULES = [
     (r"\bapple\b", "Apple", "tecnologia_software", "apps_software"),
     (r"beer\s+station", "Beer Station", "alimentacion", "bares_gastrobares"),
     (r"best\s+buy", "Best Buy", "compras", "tecnologia"),
-    (r"la\s+bodega\s+beers", "La Bodega / Beer Station", "alimentacion", "bares_gastrobares"),
+    (r"la\s+bodega\s+beer", "La Bodega / Beer Station", "alimentacion", "bares_gastrobares"),
     (r"bufalo.?s\s+la\s+eskina", "Buffalo's (La Eskina)", "alimentacion", "restaurantes"),
     (r"buffalo\s+wings", "Buffalo Wings", "alimentacion", "restaurantes"),
     # llao_llao antes que art_haus: "LLAOLLAO ART HAUS SN B" es un Llao Llao
@@ -278,11 +284,37 @@ BRAND_RULES = [
     (r"\bvidri\b", "VIDRI", "compras", "hogar"),
     (r"walgreens", "Walgreens", "salud", "farmacia"),
     (r"carters,?\s*inc", "Carter's", "compras", "ropa"),
+
+    # --- Comercios reales de las alertas (oct 2026) que caían en "otros",
+    # clasificados según indicó el usuario.
+    (r"price\s*smart", "PriceSmart", "alimentacion", "supermercado"),
+    (r"\bmadnn?ess\b", "The Madness", "compras", "ropa"),
+    (r"\bandian\b", "Andian", "alimentacion", "restaurantes"),
+    (r"\bberlina\b", "Berlina", "alimentacion", "restaurantes"),
+    (r"\bstacks\b", "Stacks", "alimentacion", "restaurantes"),
+    (r"\bbrutto\b", "Brutto", "alimentacion", "restaurantes"),
+    (r"pig\s+brothers", "Pig Brothers", "alimentacion", "restaurantes"),
+    (r"lc\s+waikiki", "LC Waikiki", "compras", "ropa"),
+    (r"cinemark", "Cinemark", "entretenimiento", "cine_cultura"),
+    (r"sonia\s+dist\w*\s+flores", "Sonia Distribuidora de Flores", "cuidado_personal", "flores_regalos"),
+    (r"jose\s+matias\s+delga", "Universidad Dr. José Matías Delgado", "educacion", "educacion"),
+    (r"carne\s+calle", "Carne Calle", "alimentacion", "restaurantes"),
+    (r"shoe\s+spot", "The Shoe Spot", "compras", "calzado"),
+    (r"\bairbnb\b", "Airbnb", "viajes", "hoteles"),
+    (r"name-?cheap", "Namecheap", "tecnologia_software", "hosting"),
+    (r"\bgithub\b", "GitHub", "tecnologia_software", "saas"),
 ]
 BRAND_RULES = [
     (re.compile(pattern, re.IGNORECASE), name, category, subcategory)
     for pattern, name, category, subcategory in BRAND_RULES
 ]
+# Nombre normalizado -> (categoría, subcategoría). El comercio guardado ya es
+# el nombre normalizado (ej. "Buffalo's (La Eskina)"), que no siempre matchea
+# su propia regex (escrita contra el descriptor crudo "BUFALO S LA ESKINA"),
+# así que detect_category lo reconoce primero por nombre exacto.
+BRAND_BY_NAME = {}
+for _pattern, _name, _category, _subcategory in BRAND_RULES:
+    BRAND_BY_NAME.setdefault(_name, (_category, _subcategory))
 
 # Taxonomía general por palabra clave (hoja "Taxonomía"), en el mismo orden
 # que la hoja de cálculo. Es heurística: ajusta las listas al vocabulario
@@ -338,11 +370,19 @@ CATEGORY_TAXONOMY = [
 ]
 
 
-def detect_category(merchant: str, subject: str, body: str = ""):
+# Solo se busca en comercio + asunto, nunca en el cuerpo: el cuerpo de la
+# "Alerta PRF" trae el "Tipo de la compra" (ej. "Internet", "Telefónica" para
+# cargos recurrentes/no presenciales), y eso hacía que GitHub/Anthropic/Apple
+# quedaran como "Telefónica" y Cinemark/Airbnb como servicio de internet.
+# También mantiene igual la clasificación inicial y la reclasificación de
+# main() (que no tiene el cuerpo porque no se persiste).
+def detect_category(merchant: str, subject: str):
     """Devuelve (categoria, subcategoria) usando primero BRAND_RULES (marcas
     conocidas y confirmadas) y luego la taxonomía genérica por palabra clave.
     """
-    text = f"{merchant or ''}\n{subject or ''}\n{body or ''}"
+    if merchant in BRAND_BY_NAME:
+        return BRAND_BY_NAME[merchant]
+    text = f"{merchant or ''}\n{subject or ''}"
     for pattern, _name, category, subcategory in BRAND_RULES:
         if pattern.search(text):
             return category, subcategory
@@ -352,10 +392,10 @@ def detect_category(merchant: str, subject: str, body: str = ""):
     return "otros", "sin_identificar"
 
 
-def brand_display_name(merchant: str, subject: str, body: str = "") -> Optional[str]:
+def brand_display_name(merchant: str, subject: str) -> Optional[str]:
     """Nombre de comercio normalizado si coincide con una marca conocida
     (Reglas #2: priorizar el comercio real sobre el procesador de pago)."""
-    text = f"{merchant or ''}\n{subject or ''}\n{body or ''}"
+    text = f"{merchant or ''}\n{subject or ''}"
     for pattern, name, _category, _subcategory in BRAND_RULES:
         if pattern.search(text):
             return name
@@ -484,8 +524,8 @@ def parse_transaction(subject: str, body: str, msg_id: str, internal_date: str) 
     card_last4 = card_match.group(1) if card_match else None
 
     if raw_merchant:
-        merchant = brand_display_name(merchant, subject, body) or normalize_merchant(merchant)
-    category, subcategory = detect_category(merchant, subject, body)
+        merchant = brand_display_name(merchant, subject) or normalize_merchant(merchant)
+    category, subcategory = detect_category(merchant, subject)
 
     return {
         "id": msg_id,
@@ -537,13 +577,15 @@ def main() -> None:
 
     data = load_existing()
     known_ids = {e["id"] for e in data["expenses"]}
+    index_by_id = {e["id"]: i for i, e in enumerate(data["expenses"])}
     new_count = 0
+    reparsed_count = 0
 
     request = service.users().messages().list(userId="me", q=query)
     while request is not None:
         response = execute_with_retry(request)
         for msg_ref in response.get("messages", []):
-            if msg_ref["id"] in known_ids:
+            if msg_ref["id"] in known_ids and not REPARSE:
                 continue
             msg = execute_with_retry(
                 service.users().messages().get(userId="me", id=msg_ref["id"], format="full")
@@ -551,8 +593,12 @@ def main() -> None:
             headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
             body = extract_text(service, msg_ref["id"], msg["payload"])
             transaction = parse_transaction(headers.get("Subject", ""), body, msg_ref["id"], msg["internalDate"])
-            if transaction:
+            if transaction and msg_ref["id"] in index_by_id:
+                data["expenses"][index_by_id[msg_ref["id"]]] = transaction
+                reparsed_count += 1
+            elif transaction:
                 data["expenses"].append(transaction)
+                index_by_id[msg_ref["id"]] = len(data["expenses"]) - 1
                 known_ids.add(msg_ref["id"])
                 new_count += 1
             time.sleep(0.2)
@@ -579,7 +625,11 @@ def main() -> None:
     envelope = encrypt_json(data, DASHBOARD_PASSPHRASE)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     EXPENSES_FILE.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    print(f"✅ Sincronizado. {new_count} transacciones nuevas. Total: {len(data['expenses'])}")
+    print(
+        f"✅ Sincronizado. {new_count} transacciones nuevas"
+        + (f", {reparsed_count} re-parseadas" if REPARSE else "")
+        + f". Total: {len(data['expenses'])}"
+    )
 
 
 if __name__ == "__main__":

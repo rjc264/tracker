@@ -83,8 +83,13 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   `SYNC_DAYS`. Los manda `sync.yml` desde `github.event.inputs.since/until`
   cuando el dashboard dispara el workflow manualmente; vacíos en el cron
   diario.
+- `REPARSE` — `true` vuelve a descargar y parsear también los correos ya
+  sincronizados dentro del rango y reemplaza la transacción guardada. Lo
+  manda el input booleano `reparse` del `workflow_dispatch` de `sync.yml`.
+  Sirve para corregir nombres de comercio ya guardados cuando cambia el
+  parseo (la reclasificación normal no tiene el cuerpo del correo).
 - `CARD_TYPE_MAP` (GitHub Variable opcional) — `"ultimos4:tipo,ultimos4:tipo"`
-  (ej. `"8825:tarjeta_credito,4321:tarjeta_debito"`). El correo de BAC no
+  (ej. `"8825:tarjeta_credito,9284:tarjeta_credito,6906:tarjeta_debito"`). El correo de BAC no
   distingue crédito de débito; esto es lo único que lo suple. Sin este mapeo,
   las compras con tarjeta quedan clasificadas como `type: "tarjeta"`
   (genérico) en vez de `tarjeta_credito`/`tarjeta_debito`.
@@ -116,7 +121,7 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   `BRAND_RULES` (marcas confirmadas, ej. Pizza Hut, Uber, Selectos, Claude,
   Walgreens, SERTRACEN...) se evalúa primero y también fija el nombre de
   comercio normalizado (`brand_display_name`, quita prefijos de procesador
-  tipo `WOMPI*`/`DLOCAL*`/`DLC`/`PAYPAL*`/`N1CO*` — `normalize_merchant` hace
+  tipo `WOMPI*`/`DLOCAL*`/`DLC`/`PAYPAL*`/`N1CO*`/`BIZZ*` — `normalize_merchant` hace
   lo mismo como fallback). Si nada matchea, cae a `CATEGORY_TAXONOMY`
   (genérico por palabra clave) y por último a `("otros", "sin_identificar")`.
   Es heurístico: ajusta las listas de palabras/marcas al vocabulario real de
@@ -127,6 +132,14 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   comercio+asunto+cuerpo combinados, esa regla habría clasificado como
   "pago a persona" casi cualquier transacción — cuidado con este mismo riesgo
   si agregas más reglas basadas en nombres de personas en vez de marcas.
+  **`detect_category`/`brand_display_name` buscan solo en comercio + asunto,
+  nunca en el cuerpo**: el cuerpo de la "Alerta PRF" trae "Tipo de la
+  compra" (`Internet`, `Telefónica` para cargos recurrentes/no presenciales),
+  y antes eso renombraba GitHub/Anthropic/Apple a "Telefónica" y mandaba
+  Cinemark/Airbnb a "Internet". Como el comercio guardado ya es el nombre
+  normalizado (ej. "Buffalo's (La Eskina)"), que no siempre matchea su propia
+  regex, `detect_category` lo reconoce primero por nombre exacto
+  (`BRAND_BY_NAME`).
   `main()` recalcula `category`/`subcategory`/`type` para **todas** las
   transacciones (no solo las nuevas) en cada sync, usando merchant/subject ya
   guardados (el cuerpo del correo no se persiste). El dashboard usa las

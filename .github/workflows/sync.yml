@@ -13,6 +13,11 @@ on:
         description: "Fecha final YYYY-MM-DD (opcional)"
         required: false
         type: string
+      reparse:
+        description: "Volver a parsear correos ya sincronizados del rango (corrige nombres de comercio)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -46,6 +51,7 @@ jobs:
           SYNC_DAYS: ${{ vars.SYNC_DAYS }}
           SYNC_SINCE: ${{ github.event.inputs.since }}
           SYNC_UNTIL: ${{ github.event.inputs.until }}
+          REPARSE: ${{ github.event.inputs.reparse }}
           CARD_TYPE_MAP: ${{ vars.CARD_TYPE_MAP }}
           DASHBOARD_PASSPHRASE: ${{ secrets.DASHBOARD_PASSPHRASE }}
         run: python gmail_reader.py
