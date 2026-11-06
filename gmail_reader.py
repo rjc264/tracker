@@ -10,6 +10,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -28,6 +29,11 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "data"))
 CREDENTIALS_FILE = CONFIG_DIR / os.environ.get("CREDENTIALS_FILE_NAME", "credentials.json")
 TOKEN_FILE = CONFIG_DIR / os.environ.get("TOKEN_FILE_NAME", "token.json")
 EXPENSES_FILE = DATA_DIR / "expenses.enc.json"
+# Reglas de clasificación creadas por el usuario desde el dashboard (botón
+# "Clasificar" en transacciones que caen en "otros"). Va cifrado con la misma
+# passphrase porque el repo es público y los nombres de comercio son datos
+# financieros. Lo escribe el navegador vía la API de Contents de GitHub.
+RULES_FILE = DATA_DIR / "rules.enc.json"
 
 BANK_EMAIL = os.environ.get("BANK_EMAIL") or "notificaciones_bac@baccredomatic.sv,info@baccredomatic.com"
 BANK_NAME = os.environ.get("BANK") or "BAC"
@@ -380,10 +386,52 @@ CATEGORY_TAXONOMY = [
 # quedaran como "Telefónica" y Cinemark/Airbnb como servicio de internet.
 # También mantiene igual la clasificación inicial y la reclasificación de
 # main() (que no tiene el cuerpo porque no se persiste).
+# Reglas del usuario: [{"pattern": "TIENDA XYZ", "category": ..., "subcategory": ...}].
+# Se cargan en main() desde RULES_FILE. Tienen prioridad sobre BRAND_RULES:
+# son una decisión explícita del usuario.
+USER_RULES: list = []
+
+
+def rule_key(text: str) -> str:
+    """Normaliza un comercio para comparar con reglas del usuario: sin tildes,
+    mayúsculas, todo lo que no sea letra/dígito se vuelve un espacio.
+    Debe mantenerse en espejo con ruleKey() en dashboard.html."""
+    decomposed = unicodedata.normalize("NFD", text or "")
+    without_accents = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^A-Z0-9]+", " ", without_accents.upper()).strip()
+
+
+def match_user_rule(merchant: str) -> Optional[dict]:
+    """Regla del usuario cuyo patrón aparece como palabras completas dentro
+    del comercio (no del asunto ni del cuerpo: ahí está el nombre del dueño
+    de la cuenta y textos genéricos). Si varias coinciden, gana la más larga
+    (la más específica). Espejo de matchUserRule() en dashboard.html."""
+    key = f" {rule_key(merchant)} "
+    best = None
+    for rule in USER_RULES:
+        pattern = rule_key(rule.get("pattern", ""))
+        if len(pattern) < 3 or f" {pattern} " not in key:
+            continue
+        if best is None or len(pattern) > len(rule_key(best["pattern"])):
+            best = rule
+    return best
+
+
+def load_user_rules() -> list:
+    if not RULES_FILE.exists():
+        return []
+    envelope = json.loads(RULES_FILE.read_text(encoding="utf-8"))
+    return decrypt_json(envelope, DASHBOARD_PASSPHRASE).get("rules", [])
+
+
 def detect_category(merchant: str, subject: str):
-    """Devuelve (categoria, subcategoria) usando primero BRAND_RULES (marcas
-    conocidas y confirmadas) y luego la taxonomía genérica por palabra clave.
+    """Devuelve (categoria, subcategoria) usando primero las reglas del
+    usuario, luego BRAND_RULES (marcas conocidas y confirmadas) y por último
+    la taxonomía genérica por palabra clave.
     """
+    user_rule = match_user_rule(merchant)
+    if user_rule:
+        return user_rule["category"], user_rule["subcategory"]
     if merchant in BRAND_BY_NAME:
         return BRAND_BY_NAME[merchant]
     text = f"{merchant or ''}\n{subject or ''}"
@@ -580,6 +628,7 @@ def main() -> None:
         query += f" before:{before}"
 
     data = load_existing()
+    USER_RULES[:] = load_user_rules()
     known_ids = {e["id"] for e in data["expenses"]}
     index_by_id = {e["id"]: i for i, e in enumerate(data["expenses"])}
     new_count = 0
@@ -609,7 +658,7 @@ def main() -> None:
         request = service.users().messages().list_next(request, response)
 
     # Reclasifica todas las transacciones (no solo las nuevas) por si
-    # CATEGORY_TAXONOMY/BRAND_RULES/CARD_TYPE_MAP cambiaron desde el último
+    # USER_RULES/CATEGORY_TAXONOMY/BRAND_RULES/CARD_TYPE_MAP cambiaron desde el último
     # sync. Usa merchant/subject/card_last4 ya guardados, porque el cuerpo
     # del correo no se persiste — por eso detect_direction solo puede
     # reevaluar la señal del asunto ("detalle de crédito"), no la del cuerpo
@@ -632,6 +681,7 @@ def main() -> None:
     print(
         f"✅ Sincronizado. {new_count} transacciones nuevas"
         + (f", {reparsed_count} re-parseadas" if REPARSE else "")
+        + f". Reglas del usuario: {len(USER_RULES)}"
         + f". Total: {len(data['expenses'])}"
     )
 

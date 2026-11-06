@@ -146,6 +146,22 @@ No son Secrets/Variables de GitHub, pero relevantes para `gmail_reader.py`:
   mismas claves en `categoryLabels`/`categoryColors`/`subcategoryLabels`
   (JS) — si agregas categoría/subcategoría nueva en Python, agrégala también
   ahí.
+- **Reglas de clasificación del usuario** (`data/rules.enc.json`, cifrado con
+  la misma passphrase): el dashboard muestra "🏷️ Clasificar" en gastos que
+  caen en `otros`; el usuario elige categoría/subcategoría y unas palabras
+  clave, y el navegador cifra y sube el archivo vía la API de Contents (el PAT
+  necesita **Contents: Read and write**). Formato:
+  `{"rules": [{"pattern", "category", "subcategory", "example", "created_at"}]}`.
+  `detect_category` las evalúa **antes** que `BRAND_BY_NAME`/`BRAND_RULES`,
+  solo contra el comercio (nunca asunto/cuerpo, por el riesgo del nombre del
+  dueño descrito arriba), como palabras completas tras `rule_key`
+  (sin tildes, mayúsculas, no-alfanumérico → espacio); si varias coinciden
+  gana el patrón más largo. `rule_key`/`match_user_rule` (Python) y
+  `ruleKey`/`matchUserRule` (JS) deben mantenerse en espejo. El dashboard
+  aplica las reglas en memoria al cargar (efecto inmediato); el sync las
+  persiste en `expenses.enc.json` al reclasificar. `sync.yml` hace
+  `git pull --rebase` antes del push por si el dashboard commiteó reglas
+  mientras corría.
 - `detect_direction` marca cada transacción como `"gasto"` o `"ingreso"` por
   defecto (asunto "detalle de crédito" o cuerpo "...ha recibido un abono a su
   cuenta..."), pero **dos formatos reales confirmados fijan `direction`

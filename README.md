@@ -95,7 +95,7 @@ GitHub Actions directamente desde el navegador.
 Para usarlo necesitas pegar, en el panel "⚙️ Configuración de sincronización"
 del dashboard, un [Personal Access Token
 fine-grained](https://github.com/settings/tokens?type=beta) limitado a este
-repo con permisos **Actions: Read and write** y **Contents: Read**. El token
+repo con permisos **Actions: Read and write** y **Contents: Read and write** (escritura solo para guardar reglas de clasificación en `data/rules.enc.json`). El token
 solo se guarda en `sessionStorage` de esa pestaña (nunca en el repo) y se
 envía únicamente a `api.github.com`. Como el repo es público, no compartas
 ese token ni lo pegues en otro sitio.

@@ -8,6 +8,7 @@ on:
       - "privacy.html"
       - "terms.html"
       - "data/expenses.enc.json"
+      - "data/rules.enc.json"
   workflow_dispatch:
 
 permissions:
@@ -39,6 +40,11 @@ jobs:
             cp data/expenses.enc.json _site/data/expenses.enc.json
           else
             echo '{}' > _site/data/expenses.enc.json
+          fi
+          # Reglas de clasificación del usuario (cifradas). Si no existen, el
+          # dashboard recibe 404 y arranca sin reglas.
+          if [ -f data/rules.enc.json ]; then
+            cp data/rules.enc.json _site/data/rules.enc.json
           fi
 
       - uses: actions/upload-pages-artifact@v3
